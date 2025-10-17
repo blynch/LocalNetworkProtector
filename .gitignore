@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Archives
+*.tar.gz
+*.zip
+
+# Editor
+.DS_Store

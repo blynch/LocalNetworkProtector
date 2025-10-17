@@ -1,0 +1,43 @@
+# LocalNetworkProtector sample configuration file.
+# Copy to config.yaml and adjust values for your environment.
+
+log_level: INFO
+
+capture:
+  interface: eth0          # Set to your Raspberry Pi network interface (e.g. wlan0)
+  bpf_filter: ""           # Optional BPF filter string (e.g. "tcp", "port 80")
+  snaplen: 2048
+  promisc: true
+  store_packets: false
+
+detection:
+  port_scan:
+    enabled: true
+    time_window_seconds: 60
+    max_unique_ports: 30
+    severity: high
+  suspicious_ports:
+    enabled: true
+    ports: [23, 2323, 3389, 5900, 8888]
+    severity: medium
+  suspicious_payload:
+    enabled: true
+    patterns: ["malware", "botnet", "password", "exploit", "cmd.exe"]
+    severity: medium
+  dns_exfiltration:
+    enabled: true
+    max_label_length: 40
+    severity: medium
+
+notification:
+  enabled: true
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  use_tls: true
+  username: you@example.com
+  password: app-specific-password
+  sender: you@example.com
+  recipients:
+    - you@example.com
+  min_severity: medium
+  cool_down_seconds: 300
