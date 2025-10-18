@@ -88,6 +88,13 @@ Then enable and start:
 sudo systemctl daemon-reload
 sudo systemctl enable --now localnetworkprotector.service
 ```
+When rotating SMTP credentials (for example, generating a new Gmail app password), update both `config.yaml` or the relevant environment variable **and** the systemd unit. If you store the password in an environment assignment (`Environment=LNP_NOTIFICATION__PASSWORD=...`), run:
+```bash
+sudo systemctl edit localnetworkprotector.service     # adjust the password
+sudo systemctl daemon-reload
+sudo systemctl restart localnetworkprotector.service
+```
+Google app passwords appear with spaces; remove the spaces when pasting into the config or service file (`abcd efgh ijkl mnop` ➜ `abcdefghijklmnop`).
 
 ## Logging
 - By default the application logs to stdout. When running under systemd, capture logs with `journalctl -u localnetworkprotector`.
