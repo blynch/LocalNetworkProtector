@@ -107,6 +107,18 @@ Google app passwords appear with spaces; remove the spaces when pasting into the
   ```
 - Adjust ownership to match the user running the service. Avoid writing directly to `/var/log` without setting permissions.
 
+## Tuning Detections
+- Each rule is configurable via `config.yaml`. For example, DNS exfiltration detection now supports an `allow_patterns` list (wildcards supported via `fnmatch`). Any query name that matches one of the patterns is ignored.
+- Example allowlist entry:
+  ```yaml
+  detection:
+    dns_exfiltration:
+      allow_patterns:
+        - "*._googlecast._tcp.local"
+        - "google-nest-hub-*.local"
+  ```
+- Increase thresholds (e.g. `max_label_length`) or disable a rule entirely when the environment is especially noisy.
+
 ## Simulating Suspicious Traffic
 The `scripts/simulate_traffic.py` helper sends packets that should trigger each rule. Run it from another machine or adapt the targets to your Pi:
 ```bash

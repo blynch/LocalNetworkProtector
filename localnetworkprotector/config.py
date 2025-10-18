@@ -63,6 +63,7 @@ class DnsExfilRuleConfig:
     enabled: bool = True
     max_label_length: int = 40
     severity: str = "medium"
+    allow_patterns: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -203,4 +204,3 @@ def _parse_env_value(raw: str) -> Any:
     if raw.isdigit():
         return int(raw)
     return raw
-

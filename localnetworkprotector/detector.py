@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+import fnmatch
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -180,9 +181,15 @@ class DnsExfiltrationRule(DetectionRule):
 
         qname = getattr(dns_layer.qd, "qname", b"") or b""
         try:
-            labels = qname.decode(errors="ignore").split(".")
+            decoded_name = qname.decode(errors="ignore")
+            labels = decoded_name.split(".")
         except Exception:
             return None
+
+        normalized_name = decoded_name.rstrip(".").lower()
+        for pattern in self.config.allow_patterns:
+            if fnmatch.fnmatch(normalized_name, pattern.lower()):
+                return None
 
         for label in labels:
             if len(label) >= self.config.max_label_length:
@@ -284,4 +291,3 @@ def _get_transport_layer(packet: Any, candidates: Iterable[Any]):
         if layer:
             return layer
     return None
-

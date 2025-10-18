@@ -28,6 +28,9 @@ detection:
     enabled: true
     max_label_length: 40
     severity: medium
+    allow_patterns:
+      - "*._googlecast._tcp.local"
+      - "google-nest-hub-*.local"
 
 notification:
   enabled: true
