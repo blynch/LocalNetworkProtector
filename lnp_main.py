@@ -14,7 +14,12 @@ from localnetworkprotector.detector import DetectionEngine
 from localnetworkprotector.monitor import MonitorService
 from localnetworkprotector.notifier import EmailNotifier
 from localnetworkprotector.scanner import ActiveScanner
+from localnetworkprotector.monitor import MonitorService
+from localnetworkprotector.notifier import EmailNotifier
+from localnetworkprotector.scanner import ActiveScanner
 from localnetworkprotector.vulnerability import VulnerabilityManager
+from localnetworkprotector.database import DatabaseManager
+from localnetworkprotector.telemetry import TelemetryManager
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -65,6 +70,13 @@ def main(argv: list[str] | None = None) -> int:
     
     active_scanner = ActiveScanner()
     vulnerability_manager = VulnerabilityManager(config.vulnerability_scanning)
+
+    # Observability
+    db = DatabaseManager()
+    db.init_db()
+    
+    telemetry = TelemetryManager()
+    telemetry.initialize(prometheus_port=9464)
     
     monitor = MonitorService(
         config=config,
@@ -72,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
         active_scanner=active_scanner,
         vulnerability_manager=vulnerability_manager,
         alert_callback=notifier.handle_alert,
+        database=db,
+        telemetry=telemetry,
     )
 
     def _graceful_shutdown(signum, frame):  # type: ignore[unused-argument]

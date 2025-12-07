@@ -10,6 +10,8 @@ from .config import AppConfig
 from .detector import DetectionEngine
 from .scanner import ActiveScanner
 from .vulnerability import VulnerabilityManager
+from .database import DatabaseManager
+from .telemetry import TelemetryManager
 
 log = logging.getLogger(__name__)
 
@@ -30,12 +32,16 @@ class MonitorService:
         active_scanner: ActiveScanner,
         vulnerability_manager: VulnerabilityManager,
         alert_callback: Callable[[Alert], None],
+        database: Optional[DatabaseManager] = None,
+        telemetry: Optional[TelemetryManager] = None,
     ) -> None:
         self.config = config
         self.detection_engine = detection_engine
         self.active_scanner = active_scanner
         self.vulnerability_manager = vulnerability_manager
         self.alert_callback = alert_callback
+        self.database = database
+        self.telemetry = telemetry
         self._running = False
         self._scanned_ips = set()
 
@@ -84,8 +90,19 @@ class MonitorService:
         # Simple check for 192.168, 10., 172.16-31.
         # For now we assume local network usage as per tool name.
         
+        
         self._scanned_ips.add(ip)
+        
+        if self.database:
+            scan_id = self.database.record_scan(ip, status="STARTED")
+        else:
+            scan_id = None
+            
         services = self.active_scanner.scan_host(ip)
+        
+        if self.telemetry:
+            self.telemetry.record_scan("COMPLETED" if services else "FAILED", ip)
+            
         if not services:
             return
 
@@ -98,6 +115,18 @@ class MonitorService:
             
             for v in vulns:
                 desc = f"Vulnerability {v.id} ({v.severity}) found on port {svc['port']} ({svc['service']}): {v.description}"
+                if self.telemetry:
+                    self.telemetry.record_vulnerability(v.severity, svc.get("product", "unknown"))
+                
+                if self.database:
+                    self.database.record_finding(
+                        scan_id=scan_id,
+                        type_="vulnerability",
+                        severity=v.severity,
+                        description=desc,
+                        details={"vuln_id": v.id, "port": svc["port"], "service": svc["service"]}
+                    )
+
                 alert = Alert(
                     rule_name="vulnerability_scanner",
                     description=desc,
@@ -117,6 +146,19 @@ class MonitorService:
                 alert.severity,
                 alert.description,
             )
+            
+            if self.telemetry:
+                self.telemetry.record_alert(alert.rule_name, alert.severity)
+            
+            if self.database:
+                self.database.record_finding(
+                    scan_id=None,
+                    type_="alert",
+                    severity=alert.severity,
+                    description=alert.description,
+                    details=alert.to_dict()
+                )
+
             self.alert_callback(alert)
             
             # Trigger active scan if suspicious
