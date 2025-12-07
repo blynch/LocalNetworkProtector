@@ -8,6 +8,8 @@ from typing import Any, Callable, Optional
 from .alerts import Alert
 from .config import AppConfig
 from .detector import DetectionEngine
+from .scanner import ActiveScanner
+from .vulnerability import VulnerabilityManager
 
 log = logging.getLogger(__name__)
 
@@ -25,12 +27,17 @@ class MonitorService:
         self,
         config: AppConfig,
         detection_engine: DetectionEngine,
+        active_scanner: ActiveScanner,
+        vulnerability_manager: VulnerabilityManager,
         alert_callback: Callable[[Alert], None],
     ) -> None:
         self.config = config
         self.detection_engine = detection_engine
+        self.active_scanner = active_scanner
+        self.vulnerability_manager = vulnerability_manager
         self.alert_callback = alert_callback
         self._running = False
+        self._scanned_ips = set()
 
     def start(self) -> None:
         """Start sniffing packets using scapy."""
@@ -66,6 +73,41 @@ class MonitorService:
         finally:
             self._running = False
 
+    def _trigger_scan(self, ip: str) -> None:
+        """Trigger active scan and vulnerability check for an IP."""
+        if not self.config.active_scanning.enabled:
+            return
+        if not ip or ip in self._scanned_ips:
+            return
+        
+        # Only scan private IPs to avoid scanning the internet
+        # Simple check for 192.168, 10., 172.16-31.
+        # For now we assume local network usage as per tool name.
+        
+        self._scanned_ips.add(ip)
+        services = self.active_scanner.scan_host(ip)
+        if not services:
+            return
+
+        for svc in services:
+            vulns = self.vulnerability_manager.check_service(
+                product=svc.get("product", ""),
+                version=svc.get("version", ""),
+                cpe=svc.get("cpe", "")
+            )
+            
+            for v in vulns:
+                desc = f"Vulnerability {v.id} ({v.severity}) found on port {svc['port']} ({svc['service']}): {v.description}"
+                alert = Alert(
+                    rule_name="vulnerability_scanner",
+                    description=desc,
+                    severity=v.severity,
+                    packet_summary=f"Host: {ip}, Service: {svc['product']} {svc['version']}",
+                    source_ip=ip
+                )
+                log.warning(desc)
+                self.alert_callback(alert)
+
     def _process_packet(self, packet: Any) -> Optional[Any]:
         alerts = self.detection_engine.inspect(packet)
         for alert in alerts:
@@ -76,6 +118,11 @@ class MonitorService:
                 alert.description,
             )
             self.alert_callback(alert)
+            
+            # Trigger active scan if suspicious
+            if alert.source_ip and self.config.active_scanning.enabled:
+                self._trigger_scan(alert.source_ip)
+                
         return packet
 
     def process_pcap(self, path: str) -> None:

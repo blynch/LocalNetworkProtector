@@ -67,6 +67,21 @@ class DnsExfilRuleConfig:
 
 
 @dataclass
+class ActiveScanningConfig:
+    enabled: bool = False
+    targets: List[str] = field(default_factory=list)
+    scan_interval_seconds: int = 3600
+
+
+@dataclass
+class VulnerabilityScanningConfig:
+    enabled: bool = False
+    nvd_api_key: str = ""
+    osv_enabled: bool = True
+    min_severity: str = "medium"
+
+
+@dataclass
 class DetectionConfig:
     port_scan: PortScanRuleConfig = field(default_factory=PortScanRuleConfig)
     suspicious_ports: SuspiciousPortRuleConfig = field(
@@ -96,6 +111,10 @@ class NotificationConfig:
 class AppConfig:
     capture: CaptureConfig = field(default_factory=CaptureConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
+    active_scanning: ActiveScanningConfig = field(default_factory=ActiveScanningConfig)
+    vulnerability_scanning: VulnerabilityScanningConfig = field(
+        default_factory=VulnerabilityScanningConfig
+    )
     notification: NotificationConfig = field(default_factory=NotificationConfig)
     log_level: str = "INFO"
 
@@ -163,6 +182,12 @@ def build_config(data: Dict[str, Any]) -> AppConfig:
             data.get("detection", {}).get("dns_exfiltration", {}),
         ),
     )
+    active_scanning = _dataclass_from_dict(
+        ActiveScanningConfig, data.get("active_scanning", {})
+    )
+    vulnerability_scanning = _dataclass_from_dict(
+        VulnerabilityScanningConfig, data.get("vulnerability_scanning", {})
+    )
     notifications = _dataclass_from_dict(
         NotificationConfig, data.get("notification", {})
     )
@@ -171,6 +196,8 @@ def build_config(data: Dict[str, Any]) -> AppConfig:
     return AppConfig(
         capture=capture,
         detection=detection,
+        active_scanning=active_scanning,
+        vulnerability_scanning=vulnerability_scanning,
         notification=notifications,
         log_level=log_level,
     )

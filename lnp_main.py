@@ -13,6 +13,8 @@ from localnetworkprotector.config import load_config
 from localnetworkprotector.detector import DetectionEngine
 from localnetworkprotector.monitor import MonitorService
 from localnetworkprotector.notifier import EmailNotifier
+from localnetworkprotector.scanner import ActiveScanner
+from localnetworkprotector.vulnerability import VulnerabilityManager
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -60,9 +62,15 @@ def main(argv: list[str] | None = None) -> int:
 
     detection_engine = DetectionEngine(config.detection)
     notifier = EmailNotifier(config.notification)
+    
+    active_scanner = ActiveScanner()
+    vulnerability_manager = VulnerabilityManager(config.vulnerability_scanning)
+    
     monitor = MonitorService(
         config=config,
         detection_engine=detection_engine,
+        active_scanner=active_scanner,
+        vulnerability_manager=vulnerability_manager,
         alert_callback=notifier.handle_alert,
     )
 

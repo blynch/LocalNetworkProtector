@@ -15,6 +15,7 @@ class Alert:
     description: str
     severity: str
     packet_summary: str
+    source_ip: Optional[str] = None
     first_seen: datetime = field(
         default_factory=lambda: datetime.now(tz=timezone.utc)
     )
@@ -35,6 +36,7 @@ class Alert:
             "severity": self.severity,
             "description": self.description,
             "packet": self.packet_summary,
+            "source_ip": self.source_ip,
             "first_seen": self.first_seen.isoformat(),
             "last_seen": self.last_seen.isoformat(),
             "occurrences": self.occurrences,

@@ -87,6 +87,7 @@ class PortScanRule(DetectionRule):
                 description=desc,
                 severity=self.config.severity,
                 packet_summary=summary,
+                source_ip=src_ip,
             )
             return alert
         return None
@@ -109,6 +110,9 @@ class SuspiciousPortRule(DetectionRule):
         if transport_layer is None:
             return None
 
+        ip_layer = _get_ip_layer(packet)
+        src_ip = getattr(ip_layer, "src", None) if ip_layer else None
+
         dst_port = getattr(transport_layer, "dport", None)
         if dst_port is None:
             return None
@@ -128,6 +132,7 @@ class SuspiciousPortRule(DetectionRule):
             description=desc,
             severity=self.config.severity,
             packet_summary=summary,
+            source_ip=src_ip,
         )
 
 
@@ -149,6 +154,12 @@ class SuspiciousPayloadRule(DetectionRule):
         if not payload_bytes:
             return None
 
+        ip_layer = _get_ip_layer(packet)
+        src_ip = getattr(ip_layer, "src", None) if ip_layer else None
+
+        ip_layer = _get_ip_layer(packet)
+        src_ip = getattr(ip_layer, "src", None) if ip_layer else None
+
         payload_lower = payload_bytes.lower()
         for pattern in self._patterns:
             if pattern.encode("utf-8") in payload_lower:
@@ -159,6 +170,7 @@ class SuspiciousPayloadRule(DetectionRule):
                     description=desc,
                     severity=self.config.severity,
                     packet_summary=summary,
+                    source_ip=src_ip,
                 )
         return None
 
@@ -191,6 +203,12 @@ class DnsExfiltrationRule(DetectionRule):
             if fnmatch.fnmatch(normalized_name, pattern.lower()):
                 return None
 
+        ip_layer = _get_ip_layer(packet)
+        src_ip = getattr(ip_layer, "src", None) if ip_layer else None
+
+        ip_layer = _get_ip_layer(packet)
+        src_ip = getattr(ip_layer, "src", None) if ip_layer else None
+
         for label in labels:
             if len(label) >= self.config.max_label_length:
                 summary = summarize_packet(packet)
@@ -202,6 +220,7 @@ class DnsExfiltrationRule(DetectionRule):
                     description=desc,
                     severity=self.config.severity,
                     packet_summary=summary,
+                    source_ip=src_ip,
                 )
         return None
 

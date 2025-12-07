@@ -9,6 +9,17 @@ capture:
   snaplen: 2048
   promisc: true
   store_packets: false
+  
+active_scanning:
+  enabled: false
+  targets: []  # List of subnets or IPs to scan, e.g. ["192.168.1.0/24"]
+  scan_interval_seconds: 3600
+
+vulnerability_scanning:
+  enabled: false
+  nvd_api_key: "" # Optional but recommended for higher rate limits
+  osv_enabled: true
+  min_severity: high # medium, high, critical
 
 detection:
   port_scan:
