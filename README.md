@@ -1,132 +1,70 @@
 # LocalNetworkProtector
 
-LocalNetworkProtector is a lightweight Python application intended for Raspberry Pi deployments. It monitors local network traffic, applies heuristic rules to spot suspicious or malicious patterns, and alerts you by email when something looks wrong.
+LocalNetworkProtector is a lightweight application designed for Raspberry Pi deployments. It monitors local network traffic for suspicious patterns (passive heuristic detection), performs active scanning to identify vulnerable services, and provides a dashboard for network observability.
 
 ## Features
-- Live packet capture via Scapy with optional PCAP replay for offline analysis
-- Heuristics for port scans, risky ports, suspicious payload keywords, and DNS data exfiltration indicators
-- Configurable severity thresholds and capture parameters
-- Email notification with batching and cooldown to avoid alert storms
-- YAML configuration with environment variable overrides (prefix `LNP_`)
+- **Passive Monitoring**: Detects port scans, risky ports, suspicious payloads, and DNS exfiltration using Scapy.
+- **Active Scanning & Vulnerability Detection**:
+    - Automatically scans suspicious IPs (or manually configured ranges) using `nmap`.
+    - Checks detected services against the **NVD** (CPE) and **OSV.dev** (OSS-Fuzz) databases for known vulnerabilities.
+- **Observability**:
+    - **OpenTelemetry** metrics for scans, vulnerabilities, and alerts.
+    - **Grafana Dashboard** (via Docker) to visualize network security posture.
+    - **SQLite** database for storing detailed finding history.
+- **Alerting**: Email notifications with batching and cooldowns to prevent fatigue.
 
 ## Requirements
-- Raspberry Pi running a recent Raspberry Pi OS (Bullseye or later recommended)
-- Python 3.9+
-- Scapy (`pip install scapy`) and PyYAML (`pip install pyyaml`)
-- Root privileges for live packet capture (`sudo`)
-- An SMTP account (e.g., Gmail with app password) to send alerts
+- **Hardware**: Raspberry Pi (3B+/4/5 recommended).
+- **OS**: Raspberry Pi OS (Debian-based).
+- **Software**: Python 3.9+, standard build tools.
+- **Optional**: Docker & Docker Compose (for the Observability Dashboard).
 
-## Installation
-1. Install system dependencies:
-   ```bash
-   sudo apt update
-   sudo apt install python3 python3-pip tcpdump
-   ```
-2. Install Python packages:
-   ```bash
-   python3 -m pip install --upgrade pip
-   python3 -m pip install scapy pyyaml
-   ```
-3. Clone or copy this repository onto your Raspberry Pi.
+## Quick Start (Raspberry Pi)
 
-## Quick Start
-1. Copy the sample configuration and adjust values:
-   ```bash
-   cp config.sample.yaml config.yaml
-   nano config.yaml
-   ```
-   At minimum set:
-   - `capture.interface` to your network interface (e.g. `eth0` or `wlan0`)
-   - `notification.username`, `notification.password`, `notification.sender`
-   - `notification.recipients`
-2. Test configuration loading:
-   ```bash
-   python3 lnp_main.py --dry-run --config config.yaml
-   ```
-3. Start monitoring (requires sudo for packet capture):
-   ```bash
-   sudo -E python3 lnp_main.py --config config.yaml
-   ```
-   Use `-E` to preserve environment variables such as `LNP_NOTIFICATION__PASSWORD`.
+See the **[Raspberry Pi Installation Guide](README_RPI.md)** for detailed, step-by-step setup instructions including virtual environments and Docker setup.
 
-## Email Notifications
-- The notifier batches alerts and enforces a cooldown window (`notification.cool_down_seconds`).
-- Alerts below `notification.min_severity` are ignored.
-- Sender defaults to `notification.sender` or falls back to `notification.username`.
-- Sensitive fields can be provided via environment variables, e.g.:
-  ```bash
-  export LNP_NOTIFICATION__PASSWORD="app-password"
-  ```
+### Basic Usage (Native)
 
-## PCAP Replay (Offline Testing)
-You can replay a captured PCAP file to validate detection rules without live traffic:
-```bash
-python3 lnp_main.py --config config.yaml --pcap samples/suspicious.pcap
-```
-The notifier still enforces cooldowns; call `--dry-run` if you only want console logs.
+1.  **Install dependencies**:
+    ```bash
+    sudo apt-get install nmap libpcap0.8-dev
+    pip install -r requirements.txt
+    ```
 
-## Running on Boot (Optional)
-Create a systemd service file `/etc/systemd/system/localnetworkprotector.service`:
-```ini
-[Unit]
-Description=Local Network Protector
-After=network-online.target
+2.  **Configure**:
+    ```bash
+    cp config.sample.yaml config.yaml
+    nano config.yaml
+    ```
+    Enable active scanning and vulnerability checks in the config if desired.
 
-[Service]
-Type=simple
-WorkingDirectory=/path/to/LocalNetworkProtector
-ExecStart=/usr/bin/python3 lnp_main.py --config /path/to/config.yaml
-Restart=on-failure
-User=root
-Environment=LNP_NOTIFICATION__PASSWORD=app-password
+3.  **Run**:
+    ```bash
+    sudo python3 lnp_main.py --config config.yaml
+    ```
 
-[Install]
-WantedBy=multi-user.target
-```
-Then enable and start:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now localnetworkprotector.service
-```
-When rotating SMTP credentials (for example, generating a new Gmail app password), update both `config.yaml` or the relevant environment variable **and** the systemd unit. If you store the password in an environment assignment (`Environment=LNP_NOTIFICATION__PASSWORD=...`), run:
-```bash
-sudo systemctl edit localnetworkprotector.service     # adjust the password
-sudo systemctl daemon-reload
-sudo systemctl restart localnetworkprotector.service
-```
-Google app passwords appear with spaces; remove the spaces when pasting into the config or service file (`abcd efgh ijkl mnop` ➜ `abcdefghijklmnop`).
+## Observability Stack
 
-## Logging
-- By default the application logs to stdout. When running under systemd, capture logs with `journalctl -u localnetworkprotector`.
-- To write to a dedicated file, create a writable directory (e.g. `/var/log/localnetworkprotector`) and point your service or shell redirection there:
-  ```bash
-  sudo mkdir -p /var/log/localnetworkprotector
-  sudo chown pi:pi /var/log/localnetworkprotector
-  sudo -E .venv/bin/python lnp_main.py --config config.yaml \
-    >> /var/log/localnetworkprotector/app.log 2>&1 &
-  ```
-- Adjust ownership to match the user running the service. Avoid writing directly to `/var/log` without setting permissions.
+The application integrates with Prometheus and Grafana to visualize data.
 
-## Tuning Detections
-- Each rule is configurable via `config.yaml`. For example, DNS exfiltration detection now supports an `allow_patterns` list (wildcards supported via `fnmatch`). Any query name that matches one of the patterns is ignored.
-- Example allowlist entry:
-  ```yaml
-  detection:
-    dns_exfiltration:
-      allow_patterns:
-        - "*._googlecast._tcp.local"
-        - "google-nest-hub-*.local"
-  ```
-- Increase thresholds (e.g. `max_label_length`) or disable a rule entirely when the environment is especially noisy.
+1.  **Start the stack**:
+    ```bash
+    docker compose up -d
+    ```
+2.  **Access Dashboard**:
+    - Open `http://<pi-ip>:3000`
+    - Login: `admin` / `admin` (default)
+    - View **LocalNetworkProtector Dashboard** to see real-time scan metrics and vulnerability counts.
 
-## Simulating Suspicious Traffic
-The `scripts/simulate_traffic.py` helper sends packets that should trigger each rule. Run it from another machine or adapt the targets to your Pi:
-```bash
-python3 scripts/simulate_traffic.py --target 192.168.1.10
-```
-This helper requires scapy and root privileges on the machine sending packets.
+## Development
 
-## Development Notes
-- Logging level is controlled by `log_level` in the config or `--log-level` CLI flag.
-- The detector contains stateful heuristics and keeps alerts cached for 10 minutes to reduce duplicate emails.
-- Add new rules by extending `DetectionRule` in `localnetworkprotector/detector.py`.
+### Running Tests
+(Add instructions for running tests if applicable, or remove this section)
+
+### Data & Logs
+- **Logs**: Output to stdout by default.
+- **Database**: `lnp.db` (SQLite) contains the history of all active scans and findings.
+- **Metrics**: Exposed at `http://<host>:9464/metrics` for Prometheus.
+
+## License
+MIT
