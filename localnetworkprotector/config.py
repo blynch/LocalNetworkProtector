@@ -46,15 +46,6 @@ class SuspiciousPortRuleConfig:
 @dataclass
 class SuspiciousPayloadRuleConfig:
     enabled: bool = True
-    patterns: List[str] = field(
-        default_factory=lambda: [
-            "malware",
-            "botnet",
-            "password",
-            "exploit",
-            "cmd.exe",
-        ]
-    )
     severity: str = "medium"
 
 
@@ -69,8 +60,9 @@ class DnsExfilRuleConfig:
 @dataclass
 class ActiveScanningConfig:
     enabled: bool = False
-    targets: List[str] = field(default_factory=list)
-    scan_interval_seconds: int = 3600
+    ports: str = "top-100"  # nmap syntax, e.g. "80,443" or "1-1000"
+    arguments: str = "-sV -T4"  # nmap arguments
+    rescan_interval_minutes: int = 60  # How often to re-scan a host = 3600
 
 
 @dataclass

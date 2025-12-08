@@ -12,8 +12,10 @@ capture:
   
 active_scanning:
   enabled: false
+  rescan_interval_minutes: 60
+
   targets: []  # List of subnets or IPs to scan, e.g. ["192.168.1.0/24"]
-  scan_interval_seconds: 3600
+
 
 vulnerability_scanning:
   enabled: false
@@ -33,7 +35,11 @@ detection:
     severity: medium
   suspicious_payload:
     enabled: true
-    patterns: ["malware", "botnet", "password", "exploit", "cmd.exe"]
+    match_patterns:
+      - "password"
+      - "passwd"
+      - "shadow"
+    excluded_ports: [3000] # Grafana
     severity: medium
   dns_exfiltration:
     enabled: true

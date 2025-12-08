@@ -146,16 +146,27 @@ class SuspiciousPayloadRule(DetectionRule):
         self._patterns = [pattern.lower() for pattern in config.patterns]
 
     def check(self, packet: Any) -> Optional[Alert]:
-        if not self.config.enabled or Raw is None:
+        if not self.config.enabled:
+            return None
+
+        # Check for excluded source ports (e.g. trusted services like Grafana on 3000)
+        if TCP is None or UDP is None: # Ensure TCP/UDP are available for getlayer
+            pass # Cannot check excluded ports if scapy transport layers are not available
+        else:
+            tcp_layer = packet.getlayer(TCP) if hasattr(packet, "getlayer") else None
+            udp_layer = packet.getlayer(UDP) if hasattr(packet, "getlayer") else None
+            
+            sport = getattr(tcp_layer, "sport", None) or getattr(udp_layer, "sport", None)
+            if sport and sport in self.config.excluded_ports:
+                return None
+
+        if Raw is None: # Raw layer is needed for payload inspection
             return None
 
         raw_layer = packet.getlayer(Raw) if hasattr(packet, "getlayer") else None
         payload_bytes = getattr(raw_layer, "load", b"") if raw_layer else b""
         if not payload_bytes:
             return None
-
-        ip_layer = _get_ip_layer(packet)
-        src_ip = getattr(ip_layer, "src", None) if ip_layer else None
 
         ip_layer = _get_ip_layer(packet)
         src_ip = getattr(ip_layer, "src", None) if ip_layer else None

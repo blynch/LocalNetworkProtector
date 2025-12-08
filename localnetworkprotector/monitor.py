@@ -43,7 +43,7 @@ class MonitorService:
         self.database = database
         self.telemetry = telemetry
         self._running = False
-        self._scanned_ips = set()
+        self._scan_history: dict[str, float] = {}  # IP -> timestamp of last scan
 
     def start(self) -> None:
         """Start sniffing packets using scapy."""
@@ -83,15 +83,23 @@ class MonitorService:
         """Trigger active scan and vulnerability check for an IP."""
         if not self.config.active_scanning.enabled:
             return
-        if not ip or ip in self._scanned_ips:
+        if not ip:
+            return
+
+        import time
+        now = time.time()
+        last_scan = self._scan_history.get(ip, 0)
+        interval_seconds = self.config.active_scanning.rescan_interval_minutes * 60
+
+        if (now - last_scan) < interval_seconds:
+            # Already scanned recently
             return
         
         # Only scan private IPs to avoid scanning the internet
         # Simple check for 192.168, 10., 172.16-31.
         # For now we assume local network usage as per tool name.
         
-        
-        self._scanned_ips.add(ip)
+        self._scan_history[ip] = now
         
         if self.database:
             scan_id = self.database.record_scan(ip, status="STARTED")

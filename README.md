@@ -4,9 +4,12 @@ LocalNetworkProtector is a lightweight application designed for Raspberry Pi dep
 
 ## Features
 - **Passive Monitoring**: Detects port scans, risky ports, suspicious payloads, and DNS exfiltration using Scapy.
+    - *New*: Supports filtering trusted source ports (e.g. ignoring Grafana traffic) to reduce false positives.
 - **Active Scanning & Vulnerability Detection**:
     - Automatically scans suspicious IPs (or manually configured ranges) using `nmap`.
+    - *New*: Configurable re-scan interval to prevent flooding (default: 60 mins).
     - Checks detected services against the **NVD** (CPE) and **OSV.dev** (OSS-Fuzz) databases for known vulnerabilities.
+
 - **Observability**:
     - **OpenTelemetry** metrics for scans, vulnerabilities, and alerts.
     - **Grafana Dashboard** (via Docker) to visualize network security posture.
