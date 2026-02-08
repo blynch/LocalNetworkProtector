@@ -63,8 +63,17 @@ sudo apt-get install -y docker-compose-plugin
     Follow the prompts to enter your email/phone and the verification code.s.
     ```bash
     chmod +x setup.sh run.sh
+    ```bash
+    chmod +x setup.sh run.sh
     ./setup.sh
     ```
+
+3.  **Enable HTTPS (Optional)**:
+    Run the certificate generation script:
+    ```bash
+    ./scripts/generate_cert.sh
+    ```
+    Then update `config.yaml` with the paths output by the script.
 
 ## 5. Configuration
 1.  Copy the sample config:

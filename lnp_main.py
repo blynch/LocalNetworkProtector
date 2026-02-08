@@ -97,16 +97,43 @@ def main(argv: list[str] | None = None) -> int:
 
     # Start Web Console
     if config.web and config.web.enabled:
-        log.info("Starting Web Admin Console on port %d", config.web.port)
+        log.info("Starting Web Admin Console on HTTP port %d", config.web.port)
         app = web.create_app(config, db, monitor)
-        # Run Flask in a separate thread
-        # use_reloader=False to prevent signal issues in main thread
-        web_thread = threading.Thread(
+        
+        # Start HTTP Server
+        http_thread = threading.Thread(
             target=app.run, 
-            kwargs={'host': config.web.host, 'port': config.web.port, 'debug': False, 'use_reloader': False},
+            kwargs={
+                'host': config.web.host, 
+                'port': config.web.port, 
+                'debug': False, 
+                'use_reloader': False
+            },
             daemon=True
         )
-        web_thread.start()
+        http_thread.start()
+
+        # Start HTTPS Server if enabled
+        if config.web.ssl_enabled:
+            cert = config.web.ssl_cert
+            key = config.web.ssl_key
+            if cert and key and Path(cert).exists() and Path(key).exists():
+                log.info("Starting Web Admin Console on HTTPS port %d", config.web.ssl_port)
+                ssl_context = (cert, key)
+                https_thread = threading.Thread(
+                    target=app.run, 
+                    kwargs={
+                        'host': config.web.host, 
+                        'port': config.web.ssl_port, 
+                        'debug': False, 
+                        'use_reloader': False,
+                        'ssl_context': ssl_context
+                    },
+                    daemon=True
+                )
+                https_thread.start()
+            else:
+                log.warning("HTTPS enabled but cert/key not found or not specified. Skipping HTTPS specific port.")
 
     def _graceful_shutdown(signum, frame):  # type: ignore[unused-argument]
         log.info("Received signal %s; flushing notifications and exiting.", signum)

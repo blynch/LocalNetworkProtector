@@ -140,6 +140,10 @@ class WebConfig:
     enabled: bool = True
     host: str = "0.0.0.0"
     port: int = 5000
+    ssl_enabled: bool = False
+    ssl_port: int = 5443
+    ssl_cert: Optional[str] = None
+    ssl_key: Optional[str] = None
 
 
 @dataclass
