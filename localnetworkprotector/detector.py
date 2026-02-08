@@ -48,8 +48,9 @@ class PortScanRule(DetectionRule):
 
     name = "port_scan"
 
-    def __init__(self, config: PortScanRuleConfig):
+    def __init__(self, config: PortScanRuleConfig, trusted_ips: List[str]):
         self.config = config
+        self.trusted_ips = set(trusted_ips)
         self._events: Dict[str, List[Tuple[float, int]]] = defaultdict(list)
 
     def check(self, packet: Any) -> Optional[Alert]:
@@ -65,6 +66,25 @@ class PortScanRule(DetectionRule):
         dst_port = getattr(transport_layer, "dport", None)
         if src_ip is None or dst_port is None:
             return None
+
+        # Allow trusted IPs to scan (e.g. self or authorized scanner)
+        if src_ip in self.trusted_ips:
+            return None
+
+        # For TCP, strictly count only SYN packets (scan attempts).
+        # Ignore traffic that is part of established connections (ACK, PSH, etc.)
+        if TCP and isinstance(transport_layer, TCP):
+            flags = transport_layer.flags
+            # Scapy flags can be checked by string representation or bitmask
+            # We want SYN bit (0x02) set, and ACK bit (0x10) NOT set.
+            # "S" in str(flags) is safer shorthand if flags is an object.
+            
+            # Note: valid SYN-ACK is a response, not a scan (usually).
+            # We only catch pure SYN or SYN with non-ACK flags (like SYN-FIN if fin scan?)
+            # Simplified: strictly 'S' must be present, 'A' must not.
+            flag_str = str(flags)
+            if 'S' not in flag_str or 'A' in flag_str:
+                return None
 
         now = time.time()
         timeline = self._events[src_ip]
@@ -143,7 +163,7 @@ class SuspiciousPayloadRule(DetectionRule):
 
     def __init__(self, config: SuspiciousPayloadRuleConfig):
         self.config = config
-        self._patterns = [pattern.lower() for pattern in config.patterns]
+        self._patterns = [pattern.lower() for pattern in config.match_patterns]
 
     def check(self, packet: Any) -> Optional[Alert]:
         if not self.config.enabled:
@@ -202,6 +222,15 @@ class DnsExfiltrationRule(DetectionRule):
         if dns_layer is None or not getattr(dns_layer, "qd", None):
             return None
 
+        # Ignore mDNS (Multicast DNS usually on port 5353)
+        if UDP and packet.haslayer(UDP):
+            udp_layer = packet.getlayer(UDP)
+            if udp_layer and (udp_layer.dport == 5353 or udp_layer.sport == 5353):
+                return None
+        # Fallback check if scapy layers aren't distinct (using attributes)
+        if getattr(packet, "sport", 0) == 5353 or getattr(packet, "dport", 0) == 5353:
+             return None
+
         qname = getattr(dns_layer.qd, "qname", b"") or b""
         try:
             decoded_name = qname.decode(errors="ignore")
@@ -242,7 +271,7 @@ class DetectionEngine:
     def __init__(self, config: DetectionConfig):
         self.config = config
         self.rules: List[DetectionRule] = [
-            PortScanRule(config.port_scan),
+            PortScanRule(config.port_scan, config.trusted_ips),
             SuspiciousPortRule(config.suspicious_ports),
             SuspiciousPayloadRule(config.suspicious_payload),
             DnsExfiltrationRule(config.dns_exfiltration),

@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-bug"></i> Tsunami Scanner Findings</h1>
+        <p class="lead">Vulnerabilities detected by the Google Tsunami Security Scanner.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-striped table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Severity</th>
+                    <th>Vulnerability ID</th>
+                    <th>Description</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for finding in findings %}
+                {% set details = finding.details_json | json_load %}
+                <tr>
+                    <td>{{ finding.timestamp }}</td>
+                    <td>
+                        <span
+                            class="badge bg-{{ 'danger' if finding.severity == 'high' or finding.severity == 'critical' else 'warning' if finding.severity == 'medium' else 'info' }}">
+                            {{ finding.severity|upper }}
+                        </span>
+                    </td>
+                    <td>
+                        {{ details.get('vuln_id', 'Unknown') }}
+                    </td>
+                    <td>{{ finding.description }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#details-{{ finding.id }}">
+                            JSON
+                        </button>
+                    </td>
+                </tr>
+                <tr class="collapse" id="details-{{ finding.id }}">
+                    <td colspan="5">
+                        <pre class="bg-light p-3 m-0"><code>{{ finding.details_json }}</code></pre>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="text-center py-4">
+                        <p class="text-muted mb-0">No Tsunami findings recorded yet.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

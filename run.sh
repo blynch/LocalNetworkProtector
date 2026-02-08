@@ -12,4 +12,4 @@ fi
 
 echo "Starting LocalNetworkProtector..."
 # Using the venv python with sudo preserves the venv site-packages
-sudo ./venv/bin/python3 lnp_main.py "$@"
+sudo ./venv/bin/python3 -u lnp_main.py "$@"

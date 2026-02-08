@@ -1,0 +1,4 @@
+# Configuration to whitelist local scanner IP
+detection:
+  trusted_ips:
+    - "192.168.4.38"

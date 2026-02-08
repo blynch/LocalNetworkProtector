@@ -11,7 +11,29 @@ sudo apt-get update
 sudo apt-get install -y nmap libpcap0.8-dev
 ```
 
-## 3. Install Docker (For Observability)
+## 3. Systemd Service (Auto-Start)
+To run as a system service (so it starts on boot and logs to journald):
+
+1.  **Copy the service file**:
+    ```bash
+    sudo cp localnetworkprotector.service /etc/systemd/system/
+    ```
+2.  **Reload Daemon**:
+    ```bash
+    sudo systemctl daemon-reload
+    ```
+3.  **Enable & Start**:
+    ```bash
+    sudo systemctl enable localnetworkprotector
+    sudo systemctl start localnetworkprotector
+    ```
+4.  **View Logs**:
+    ```bash
+    # View live logs
+    sudo journalctl -u localnetworkprotector -f
+    ```
+
+## 4. Install Docker (For Observability)
 If you want to use the Grafana dashboard, you need Docker and Docker Compose.
 ```bash
 # Install Docker
@@ -29,12 +51,16 @@ sudo apt-get install -y docker-compose-plugin
 ## 4. Install Application
 1.  **Extract the archive**:
     ```bash
-    tar -xzvf LocalNetworkProtector_v11.tar.gz
+    tar -xzvf LocalNetworkProtector_v54.tar.gz
     cd LocalNetworkProtector
     ```
 
-2.  **Setup Python Environment**:
-    Run the setup script to create a virtual environment and install Python dependencies.
+2.  **Authenticate (One-Time)**:
+    Run the login script (requires sudo to save session file):
+    ```bash
+    sudo ./venv/bin/python3 scripts/eero_login.py
+    ```
+    Follow the prompts to enter your email/phone and the verification code.s.
     ```bash
     chmod +x setup.sh run.sh
     ./setup.sh

@@ -6,3 +6,6 @@ opentelemetry-api
 opentelemetry-sdk
 opentelemetry-exporter-prometheus>=0.40b0
 prometheus-client
+eero
+schedule
+flask

@@ -4,18 +4,17 @@
 log_level: INFO
 
 capture:
-  interface: eth0          # Set to your Raspberry Pi network interface (e.g. wlan0)
-  bpf_filter: ""           # Optional BPF filter string (e.g. "tcp", "port 80")
+  interface: eth0 # Set to your Raspberry Pi network interface (e.g. wlan0)
+  bpf_filter: "" # Optional BPF filter string (e.g. "tcp", "port 80")
   snaplen: 2048
   promisc: true
   store_packets: false
-  
+
 active_scanning:
   enabled: false
   rescan_interval_minutes: 60
 
-  targets: []  # List of subnets or IPs to scan, e.g. ["192.168.1.0/24"]
-
+  targets: [] # List of subnets or IPs to scan, e.g. ["192.168.1.0/24"]
 
 vulnerability_scanning:
   enabled: false
@@ -28,11 +27,21 @@ detection:
     enabled: true
     time_window_seconds: 60
     max_unique_ports: 30
+  dns_exfiltration:
+    enabled: true
+    allow_patterns:
+      - "*.local" # Ignore mDNS/Sonos
+      - "*.arpa"
     severity: high
+    trusted_ips: [] # List of IPs to ignore (e.g. ["192.168.1.50"])
   suspicious_ports:
     enabled: true
     ports: [23, 2323, 3389, 5900, 8888]
     severity: medium
+  tsunami:
+    enabled: false
+    docker_image: "localnetworkprotector/tsunami"
+    scan_timeout: 300
   suspicious_payload:
     enabled: true
     match_patterns:
@@ -41,13 +50,6 @@ detection:
       - "shadow"
     excluded_ports: [3000] # Grafana
     severity: medium
-  dns_exfiltration:
-    enabled: true
-    max_label_length: 40
-    severity: medium
-    allow_patterns:
-      - "*._googlecast._tcp.local"
-      - "google-nest-hub-*.local"
 
 notification:
   enabled: true
@@ -61,3 +63,19 @@ notification:
     - you@example.com
   min_severity: medium
   cool_down_seconds: 300
+
+eero:
+  enabled: false
+  session_path: "eero.session"
+  check_interval_seconds: 300
+
+scheduled_scan:
+  enabled: false
+  schedule_time: "03:00" # HH:MM (24h)
+  target_subnets:
+    - "192.168.1.0/24"
+
+web:
+  enabled: true
+  host: "0.0.0.0"
+  port: 5000

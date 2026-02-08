@@ -46,6 +46,16 @@ class SuspiciousPortRuleConfig:
 @dataclass
 class SuspiciousPayloadRuleConfig:
     enabled: bool = True
+    match_patterns: List[str] = field(
+        default_factory=lambda: [
+            "malware",
+            "botnet",
+            "password",
+            "exploit",
+            "cmd.exe",
+        ]
+    )
+    excluded_ports: List[int] = field(default_factory=list)
     severity: str = "medium"
 
 
@@ -54,7 +64,9 @@ class DnsExfilRuleConfig:
     enabled: bool = True
     max_label_length: int = 40
     severity: str = "medium"
-    allow_patterns: List[str] = field(default_factory=list)
+    allow_patterns: List[str] = field(
+        default_factory=lambda: ["*.local", "*.arpa"]
+    )
 
 
 @dataclass
@@ -83,6 +95,8 @@ class DetectionConfig:
         default_factory=SuspiciousPayloadRuleConfig
     )
     dns_exfiltration: DnsExfilRuleConfig = field(default_factory=DnsExfilRuleConfig)
+    trusted_ips: List[str] = field(default_factory=list)
+    tsunami: TsunamiConfig = field(default_factory=TsunamiConfig)
 
 
 @dataclass
@@ -100,15 +114,69 @@ class NotificationConfig:
 
 
 @dataclass
-class AppConfig:
-    capture: CaptureConfig = field(default_factory=CaptureConfig)
-    detection: DetectionConfig = field(default_factory=DetectionConfig)
-    active_scanning: ActiveScanningConfig = field(default_factory=ActiveScanningConfig)
-    vulnerability_scanning: VulnerabilityScanningConfig = field(
-        default_factory=VulnerabilityScanningConfig
-    )
-    notification: NotificationConfig = field(default_factory=NotificationConfig)
+class ScheduledScanConfig:
+    enabled: bool = False
+    schedule_time: str = "03:00"  # 24-hour format HH:MM
+    target_subnets: List[str] = field(default_factory=list)
+
+
+
+@dataclass
+class EeroConfig:
+    enabled: bool = False
+    session_path: str = "eero.session"
+    check_interval_seconds: int = 300
+
+
+@dataclass
+class WebConfig:
+    enabled: bool = True
+    host: str = "0.0.0.0"
+    port: int = 5000
+
+
+@dataclass
+class Config:
     log_level: str = "INFO"
+    capture: CaptureConfig = field(default_factory=CaptureConfig)
+    active_scanning: ActiveScanningConfig = field(default_factory=ActiveScanningConfig)
+    vulnerability_scanning: VulnerabilityScanningConfig = field(default_factory=VulnerabilityScanningConfig)
+    detection: DetectionConfig = field(default_factory=DetectionConfig)
+    notification: NotificationConfig = field(default_factory=NotificationConfig)
+    eero: EeroConfig = field(default_factory=EeroConfig)
+    web: WebConfig = field(default_factory=WebConfig)
+    scheduled_scan: ScheduledScanConfig = field(default_factory=ScheduledScanConfig)
+    database_path: str = "lnp_database.db"
+    
+    @classmethod
+    def load(cls, path: str) -> "Config":
+        # ... (rest of load method logic is handled by global functions below)
+        pass
+
+
+# ... (skipping unchanged code) ...
+
+def build_config(data: Dict[str, Any]) -> Config:
+    """Build Config dataclass from raw dict."""
+    # ...
+    eero = _dataclass_from_dict(
+        EeroConfig, data.get("eero", {})
+    )
+    scheduled_scan = _dataclass_from_dict(
+        ScheduledScanConfig, data.get("scheduled_scan", {})
+    )
+    log_level = data.get("log_level", "INFO")
+
+    return Config(
+        capture=capture,
+        detection=detection,
+        active_scanning=active_scanning,
+        vulnerability_scanning=vulnerability_scanning,
+        notification=notifications,
+        eero=eero,
+        scheduled_scan=scheduled_scan,
+        log_level=log_level,
+    )
 
 
 def _merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
@@ -134,7 +202,7 @@ def _dataclass_from_dict(datacls, data: Dict[str, Any]):
     return datacls(**kwargs)
 
 
-def load_config(path: Optional[str] = None) -> AppConfig:
+def load_config(path: Optional[str] = None) -> Config:
     """Load configuration from YAML file and environment overrides."""
     config_dict: Dict[str, Any] = {}
 
@@ -154,25 +222,27 @@ def load_config(path: Optional[str] = None) -> AppConfig:
     return build_config(config_dict)
 
 
-def build_config(data: Dict[str, Any]) -> AppConfig:
-    """Build AppConfig dataclass from raw dict."""
+def build_config(data: Dict[str, Any]) -> Config:
+    """Build Config dataclass from raw dict."""
     capture = _dataclass_from_dict(CaptureConfig, data.get("capture", {}))
+    detection_data = data.get("detection", {})
     detection = DetectionConfig(
         port_scan=_dataclass_from_dict(
-            PortScanRuleConfig, data.get("detection", {}).get("port_scan", {})
+            PortScanRuleConfig, detection_data.get("port_scan", {})
         ),
         suspicious_ports=_dataclass_from_dict(
             SuspiciousPortRuleConfig,
-            data.get("detection", {}).get("suspicious_ports", {}),
+            detection_data.get("suspicious_ports", {}),
         ),
         suspicious_payload=_dataclass_from_dict(
             SuspiciousPayloadRuleConfig,
-            data.get("detection", {}).get("suspicious_payload", {}),
+            detection_data.get("suspicious_payload", {}),
         ),
         dns_exfiltration=_dataclass_from_dict(
             DnsExfilRuleConfig,
-            data.get("detection", {}).get("dns_exfiltration", {}),
+            detection_data.get("dns_exfiltration", {}),
         ),
+        trusted_ips=detection_data.get("trusted_ips", []),
     )
     active_scanning = _dataclass_from_dict(
         ActiveScanningConfig, data.get("active_scanning", {})
@@ -183,14 +253,22 @@ def build_config(data: Dict[str, Any]) -> AppConfig:
     notifications = _dataclass_from_dict(
         NotificationConfig, data.get("notification", {})
     )
+    eero = _dataclass_from_dict(
+        EeroConfig, data.get("eero", {})
+    )
+    scheduled_scan = _dataclass_from_dict(
+        ScheduledScanConfig, data.get("scheduled_scan", {})
+    )
     log_level = data.get("log_level", "INFO")
 
-    return AppConfig(
+    return Config(
         capture=capture,
         detection=detection,
         active_scanning=active_scanning,
         vulnerability_scanning=vulnerability_scanning,
         notification=notifications,
+        eero=eero,
+        scheduled_scan=scheduled_scan,
         log_level=log_level,
     )
 

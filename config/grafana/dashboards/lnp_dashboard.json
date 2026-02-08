@@ -176,21 +176,79 @@
             ],
             "title": "Alerts",
             "type": "timeseries"
+        },
+        {
+            "datasource": "Prometheus",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 8
+            },
+            "id": 8,
+            "targets": [
+                {
+                    "expr": "rate(lnp_packet_processed_total[1m]) * 60",
+                    "legendFormat": "Packets/min",
+                    "refId": "A"
+                }
+            ],
+            "title": "Packet Processing Rate (Heartbeat)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": "Prometheus",
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 16
+            },
+            "id": 10,
+            "targets": [
+                {
+                    "expr": "lnp_open_ports",
+                    "legendFormat": "{{target_ip}}",
+                    "refId": "A"
+                }
+            ],
+            "title": "Open Ports per Host",
+            "type": "timeseries"
         }
-    ],
-    "schemaVersion": 27,
-    "style": "dark",
-    "tags": [],
-    "templating": {
-        "list": []
     },
-    "time": {
-        "from": "now-6h",
-        "to": "now"
-    },
-    "timepicker": {},
-    "timezone": "",
-    "title": "LocalNetworkProtector Dashboard",
-    "uid": "lnp_main",
-    "version": 0
+    {
+        "datasource": "Prometheus",
+        "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 0
+        },
+        "id": 11,
+        "targets": [
+            {
+                "expr": "lnp_eero_total_devices",
+                "legendFormat": "Total Devices",
+                "refId": "A"
+            }
+        ],
+        "title": "Eero Device Count",
+        "type": "stat"
+    }
+],
+"schemaVersion": 27,
+"style": "dark",
+"tags": [],
+"templating": {
+    "list": []
+},
+"time": {
+    "from": "now-6h",
+    "to": "now"
+},
+"timepicker": {},
+"timezone": "",
+"title": "LocalNetworkProtector Dashboard",
+"uid": "lnp_main",
+"version": 2
 }

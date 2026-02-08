@@ -23,6 +23,8 @@ class ActiveScanner:
         else:
             try:
                 self._nm = nmap.PortScanner()
+                ver = self._nm.nmap_version()
+                log.info("ActiveScanner ready. Using nmap version: %s", ver)
             except nmap.PortScannerError:
                 log.error(
                     "nmap binary not found. Please install nmap. Active scanning disabled."
@@ -35,13 +37,16 @@ class ActiveScanner:
     def is_available(self) -> bool:
         return self._nm is not None
 
-    def scan_host(self, ip: str, ports: str = "22-1024") -> List[Dict[str, str]]:
+    def scan_host(self, ip: str, ports: str = "22-1024") -> Optional[List[Dict[str, str]]]:
         """
         Scan a single host for service versions.
-        Returns a list of dictionaries with keys: port, service, product, version, cpe.
+        Returns:
+            List of dicts: Found services
+            []: Scan completed but no open ports found
+            None: Scan failed or nmap unavailable
         """
         if not self.is_available():
-            return []
+            return None
 
         log.info("Starting active scan on %s ports %s", ip, ports)
         try:
@@ -49,7 +54,7 @@ class ActiveScanner:
             self._nm.scan(ip, ports, arguments="-sV --version-light")
         except Exception as e:
             log.error("Scan failed for %s: %s", ip, e)
-            return []
+            return None
 
         results = []
         if ip not in self._nm.all_hosts():
@@ -79,3 +84,28 @@ class ActiveScanner:
                 results.append(item)
         
         return results
+
+    def discover_hosts(self, subnet: str) -> List[str]:
+        """
+        Perform a ping scan (discovery) on a subnet to find live hosts.
+        Uses nmap -sn.
+        """
+        if not self.is_available():
+            return []
+
+        log.info("Starting discovery scan on subnet: %s", subnet)
+        try:
+            # -sn: Ping Scan - disable port scan
+            # -n: Never do DNS resolution (faster)
+            self._nm.scan(hosts=subnet, arguments="-sn -n")
+        except Exception as e:
+            log.error("Discovery scan failed for %s: %s", subnet, e)
+            return []
+
+        live_hosts = []
+        for host in self._nm.all_hosts():
+            if self._nm[host].state() == "up":
+                live_hosts.append(host)
+        
+        log.info("Discovery complete. Found %d live hosts in %s", len(live_hosts), subnet)
+        return live_hosts

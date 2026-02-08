@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-router"></i> Eero Devices</h5>
+                <h2 class="display-4">{{ device_count }}</h2>
+                <a href="{{ url_for('devices') }}" class="btn btn-light btn-sm text-primary">View All</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-activity"></i> Total Scans</h5>
+                <h2 class="display-4">{{ scan_count }}</h2>
+                <a href="{{ url_for('scans') }}" class="btn btn-light btn-sm text-success">View History</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-danger text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-bug"></i> Tsunami Vulns</h5>
+                <h2 class="display-4">{{ tsunami_count }}</h2>
+                <a href="{{ url_for('tsunami') }}" class="btn btn-light btn-sm text-danger">View Findings</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Recent Alerts</h5>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Severity</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for alert in recent_alerts %}
+                        <tr>
+                            <td>{{ alert.timestamp }}</td>
+                            <td>
+                                <span
+                                    class="badge bg-{{ 'danger' if alert.severity == 'high' else 'warning' if alert.severity == 'medium' else 'info' }}">
+                                    {{ alert.severity }}
+                                </span>
+                            </td>
+                            <td>{{ alert.description }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted">No recent alerts</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -71,7 +71,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--ports",
         nargs="+",
         type=int,
-        default=[22, 23, 80, 81, 445, 8080],
+        type=int,
+        # Default enough ports to trigger the 30-port threshold
+        default=[p for p in range(5000, 5040)],
+        help="Ports to scan/simulate.",
         help="Ports to scan/simulate.",
     )
     parser.add_argument(
