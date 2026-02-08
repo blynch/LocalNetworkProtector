@@ -55,6 +55,16 @@ class TsunamiScanner:
             # Ensure the directory exists (it should, but good practice)
             temp_path.mkdir(parents=True, exist_ok=True)
 
+            # Construct the command to run inside the container using sh -c to allow wildcard expansion for the JAR
+            tsunami_cmd = (
+                "java -cp \"tsunami-main-*-cli.jar:plugins/*\" "
+                "-Dtsunami-config.location=/usr/tsunami/tsunami.yaml "
+                "com.google.tsunami.main.cli.TsunamiCli "
+                f"--ip-v4-target={ip} "
+                "--scan-results-local-output-format=JSON "
+                "--scan-results-local-output-filename=/usr/tsunami/logs/tsunami-output.json"
+            )
+
             cmd = [
                 "docker",
                 "run",
@@ -62,14 +72,9 @@ class TsunamiScanner:
                 "-v",
                 f"{temp_path}:/usr/tsunami/logs",
                 self.config.docker_image,
-                "java",
-                "-cp",
-                "tsunami-main-*-cli.jar:plugins/*",
-                "-Dtsunami-config.location=/usr/tsunami/tsunami.yaml",
-                "com.google.tsunami.main.cli.TsunamiCli",
-                f"--ip-v4-target={ip}",
-                "--scan-results-local-output-format=JSON",
-                "--scan-results-local-output-filename=/usr/tsunami/logs/tsunami-output.json",
+                "sh",
+                "-c",
+                tsunami_cmd
             ]
 
             try:

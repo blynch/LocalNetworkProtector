@@ -86,6 +86,13 @@ class VulnerabilityScanningConfig:
 
 
 @dataclass
+class TsunamiConfig:
+    enabled: bool = False
+    docker_image: str = "localnetworkprotector/tsunami"
+    scan_timeout: int = 600
+
+
+@dataclass
 class DetectionConfig:
     port_scan: PortScanRuleConfig = field(default_factory=PortScanRuleConfig)
     suspicious_ports: SuspiciousPortRuleConfig = field(
