@@ -98,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     # Start Web Console
     if config.web and config.web.enabled:
         log.info("Starting Web Admin Console on HTTP port %d", config.web.port)
+        log.info("SSL Enabled: %s, SSL Port: %s", config.web.ssl_enabled, config.web.ssl_port)
         app = web.create_app(config, db, monitor)
         
         # Start HTTP Server

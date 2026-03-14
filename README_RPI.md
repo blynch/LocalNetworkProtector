@@ -73,13 +73,18 @@ sudo apt-get install -y docker-compose-plugin
     ```bash
     ./scripts/generate_cert.sh
     ```
+    ./scripts/generate_cert.sh
+    ```
     Then update `config.yaml` with the paths output by the script.
+    - HTTP will remain on port `5000`.
+    - HTTPS will be available on port `5443` (configurable via `ssl_port`).
 
 ## 5. Configuration
 1.  Copy the sample config:
     ```bash
-    cp config.sample.yaml config.yaml
+    cp -n config.sample.yaml config.yaml
     ```
+    *Note: The `-n` flag prevents overwriting an existing config.*
 2.  Edit `config.yaml`:
     - Enable `active_scanning` if desired.
     - Enable `vulnerability_scanning`.

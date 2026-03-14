@@ -22,4 +22,7 @@ echo "Installing Tsunami Scanner (Docker required)..."
 chmod +x scripts/install_tsunami.sh
 ./scripts/install_tsunami.sh || echo "Warning: Tsunami installation failed. Docker may be missing."
 
+echo "Creating certificates directory..."
+mkdir -p certs
+
 echo "Setup complete. Use ./run.sh to start the application."

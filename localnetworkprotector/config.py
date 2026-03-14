@@ -235,6 +235,7 @@ def load_config(path: Optional[str] = None) -> Config:
 
 def build_config(data: Dict[str, Any]) -> Config:
     """Build Config dataclass from raw dict."""
+    print(f"DEBUG: Raw web config: {data.get('web')}")
     capture = _dataclass_from_dict(CaptureConfig, data.get("capture", {}))
     detection_data = data.get("detection", {})
     detection = DetectionConfig(
@@ -270,6 +271,7 @@ def build_config(data: Dict[str, Any]) -> Config:
     scheduled_scan = _dataclass_from_dict(
         ScheduledScanConfig, data.get("scheduled_scan", {})
     )
+    web = _dataclass_from_dict(WebConfig, data.get("web", {}))
     log_level = data.get("log_level", "INFO")
 
     return Config(
@@ -279,6 +281,7 @@ def build_config(data: Dict[str, Any]) -> Config:
         vulnerability_scanning=vulnerability_scanning,
         notification=notifications,
         eero=eero,
+        web=web,
         scheduled_scan=scheduled_scan,
         log_level=log_level,
     )

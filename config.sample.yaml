@@ -79,3 +79,9 @@ web:
   enabled: true
   host: "0.0.0.0"
   port: 5000
+  # HTTPS Configuration
+  # Run ./scripts/generate_cert.sh to create certificates
+  ssl_enabled: false
+  ssl_port: 5443
+  ssl_cert: "" # e.g. "/opt/LocalNetworkProtector/certs/lnp-cert.pem"
+  ssl_key: "" # e.g. "/opt/LocalNetworkProtector/certs/lnp-key.pem"
