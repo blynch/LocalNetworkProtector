@@ -69,6 +69,19 @@ class DatabaseManager:
             log.error("Failed to record scan: %s", e)
             return -1
 
+    def update_scan_status(self, scan_id: Optional[int], status: str) -> None:
+        """Update a previously recorded scan status."""
+        if not scan_id or scan_id < 0:
+            return
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "UPDATE scans SET status = ? WHERE id = ?",
+                    (status, scan_id),
+                )
+        except Exception as e:
+            log.error("Failed to update scan %s status to %s: %s", scan_id, status, e)
+
     def record_finding(
         self,
         scan_id: Optional[int],
@@ -166,3 +179,207 @@ class DatabaseManager:
         except Exception as e:
             log.error("Failed to fetch Tsunami findings: %s", e)
         return findings
+
+    def get_dashboard_stats(self) -> Dict[str, int]:
+        """Return top-level dashboard metrics."""
+        stats = {"device_count": 0, "scan_count": 0, "tsunami_count": 0}
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM eero_devices")
+                stats["device_count"] = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM scans")
+                stats["scan_count"] = cursor.fetchone()[0]
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) FROM findings
+                    WHERE details_json LIKE '%"service": "tsunami-scanner"%'
+                    """
+                )
+                stats["tsunami_count"] = cursor.fetchone()[0]
+        except Exception as e:
+            log.error("Failed to fetch dashboard stats: %s", e)
+        return stats
+
+    def get_recent_findings(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """Return recent findings ordered by newest first."""
+        findings: List[Dict[str, Any]] = []
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM findings ORDER BY id DESC LIMIT ?", (limit,))
+                cols = [desc[0] for desc in cursor.description]
+                findings = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            log.error("Failed to fetch recent findings: %s", e)
+        return findings
+
+    def get_eero_devices(self) -> List[Dict[str, Any]]:
+        """Return known Eero devices ordered by last seen descending."""
+        devices: List[Dict[str, Any]] = []
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM eero_devices ORDER BY last_seen DESC")
+                cols = [desc[0] for desc in cursor.description]
+                devices = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            log.error("Failed to fetch Eero devices: %s", e)
+        return devices
+
+    def get_scan_history(
+        self,
+        limit: int = 50,
+        status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return recent scan history with per-scan finding counts."""
+        return self.get_scan_history_page(page=1, per_page=limit, status=status)["items"]
+
+    def get_scan_history_page(
+        self,
+        page: int = 1,
+        per_page: int = 50,
+        status: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return paginated scan history with metadata."""
+        scans: List[Dict[str, Any]] = []
+        total = 0
+        page = max(1, page)
+        per_page = max(1, min(per_page, 200))
+        offset = (page - 1) * per_page
+        try:
+            where_clause = ""
+            where_params: List[Any] = []
+            if status:
+                where_clause = " WHERE scans.status = ?"
+                where_params.append(status)
+
+            count_query = f"SELECT COUNT(*) FROM scans{where_clause}"
+            query = """
+                SELECT
+                    scans.id,
+                    scans.timestamp,
+                    scans.target_ip,
+                    scans.status,
+                    COUNT(findings.id) AS finding_count
+                FROM scans
+                LEFT JOIN findings ON findings.scan_id = scans.id
+            """
+            if status:
+                query += " WHERE scans.status = ?"
+            params = list(where_params)
+            query += """
+                GROUP BY scans.id, scans.timestamp, scans.target_ip, scans.status
+                ORDER BY scans.id DESC
+                LIMIT ? OFFSET ?
+            """
+            params.extend([per_page, offset])
+
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(count_query, where_params)
+                total = cursor.fetchone()[0]
+                cursor.execute(query, params)
+                cols = [desc[0] for desc in cursor.description]
+                scans = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            log.error("Failed to fetch scan history: %s", e)
+        pages = (total + per_page - 1) // per_page if total else 0
+        return {
+            "items": scans,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": pages,
+            "has_prev": page > 1,
+            "has_next": page < pages,
+        }
+
+    def get_scan_details(
+        self,
+        scan_id: int,
+        findings_page: int = 1,
+        findings_per_page: int = 25,
+    ) -> Optional[Dict[str, Any]]:
+        """Return a single scan with its associated findings."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT
+                        scans.id,
+                        scans.timestamp,
+                        scans.target_ip,
+                        scans.status,
+                        COUNT(findings.id) AS finding_count
+                    FROM scans
+                    LEFT JOIN findings ON findings.scan_id = scans.id
+                    WHERE scans.id = ?
+                    GROUP BY scans.id, scans.timestamp, scans.target_ip, scans.status
+                    """,
+                    (scan_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                cols = [desc[0] for desc in cursor.description]
+                scan = dict(zip(cols, row))
+                scan["findings_page"] = self.get_findings_for_scan_page(
+                    scan_id,
+                    page=findings_page,
+                    per_page=findings_per_page,
+                )
+                scan["findings"] = scan["findings_page"]["items"]
+                return scan
+        except Exception as e:
+            log.error("Failed to fetch scan %s details: %s", scan_id, e)
+            return None
+
+    def get_findings_for_scan(self, scan_id: int) -> List[Dict[str, Any]]:
+        """Return findings associated with a scan."""
+        return self.get_findings_for_scan_page(scan_id)["items"]
+
+    def get_findings_for_scan_page(
+        self,
+        scan_id: int,
+        page: int = 1,
+        per_page: int = 25,
+    ) -> Dict[str, Any]:
+        """Return paginated findings associated with a scan."""
+        findings: List[Dict[str, Any]] = []
+        total = 0
+        page = max(1, page)
+        per_page = max(1, min(per_page, 200))
+        offset = (page - 1) * per_page
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM findings WHERE scan_id = ?",
+                    (scan_id,),
+                )
+                total = cursor.fetchone()[0]
+                cursor.execute(
+                    """
+                    SELECT * FROM findings
+                    WHERE scan_id = ?
+                    ORDER BY id DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (scan_id, per_page, offset),
+                )
+                cols = [desc[0] for desc in cursor.description]
+                findings = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            log.error("Failed to fetch findings for scan %s: %s", scan_id, e)
+        pages = (total + per_page - 1) // per_page if total else 0
+        return {
+            "items": findings,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": pages,
+            "has_prev": page > 1,
+            "has_next": page < pages,
+        }

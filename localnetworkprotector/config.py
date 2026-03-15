@@ -37,9 +37,7 @@ class PortScanRuleConfig:
 @dataclass
 class SuspiciousPortRuleConfig:
     enabled: bool = True
-    ports: List[int] = field(
-        default_factory=lambda: [23, 2323, 3389, 5900, 8888]
-    )
+    ports: List[int] = field(default_factory=lambda: [23, 2323, 3389, 5900, 8888])
     severity: str = "medium"
 
 
@@ -64,17 +62,17 @@ class DnsExfilRuleConfig:
     enabled: bool = True
     max_label_length: int = 40
     severity: str = "medium"
-    allow_patterns: List[str] = field(
-        default_factory=lambda: ["*.local", "*.arpa"]
-    )
+    allow_patterns: List[str] = field(default_factory=lambda: ["*.local", "*.arpa"])
 
 
 @dataclass
 class ActiveScanningConfig:
     enabled: bool = False
-    ports: str = "top-100"  # nmap syntax, e.g. "80,443" or "1-1000"
-    arguments: str = "-sV -T4"  # nmap arguments
-    rescan_interval_minutes: int = 60  # How often to re-scan a host = 3600
+    ports: str = "top-100"
+    arguments: str = "-sV -T4"
+    rescan_interval_minutes: int = 60
+    allowed_targets: List[str] = field(default_factory=list)
+    allow_public_targets: bool = False
 
 
 @dataclass
@@ -95,12 +93,8 @@ class TsunamiConfig:
 @dataclass
 class DetectionConfig:
     port_scan: PortScanRuleConfig = field(default_factory=PortScanRuleConfig)
-    suspicious_ports: SuspiciousPortRuleConfig = field(
-        default_factory=SuspiciousPortRuleConfig
-    )
-    suspicious_payload: SuspiciousPayloadRuleConfig = field(
-        default_factory=SuspiciousPayloadRuleConfig
-    )
+    suspicious_ports: SuspiciousPortRuleConfig = field(default_factory=SuspiciousPortRuleConfig)
+    suspicious_payload: SuspiciousPayloadRuleConfig = field(default_factory=SuspiciousPayloadRuleConfig)
     dns_exfiltration: DnsExfilRuleConfig = field(default_factory=DnsExfilRuleConfig)
     trusted_ips: List[str] = field(default_factory=list)
     tsunami: TsunamiConfig = field(default_factory=TsunamiConfig)
@@ -123,9 +117,8 @@ class NotificationConfig:
 @dataclass
 class ScheduledScanConfig:
     enabled: bool = False
-    schedule_time: str = "03:00"  # 24-hour format HH:MM
+    schedule_time: str = "03:00"
     target_subnets: List[str] = field(default_factory=list)
-
 
 
 @dataclass
@@ -140,6 +133,12 @@ class WebConfig:
     enabled: bool = True
     host: str = "0.0.0.0"
     port: int = 5000
+    auth_enabled: bool = False
+    username: str = "admin"
+    password: Optional[str] = None
+    password_hash: Optional[str] = None
+    session_secret: Optional[str] = None
+    api_tokens: List[str] = field(default_factory=list)
     ssl_enabled: bool = False
     ssl_port: int = 5443
     ssl_cert: Optional[str] = None
@@ -157,47 +156,17 @@ class Config:
     eero: EeroConfig = field(default_factory=EeroConfig)
     web: WebConfig = field(default_factory=WebConfig)
     scheduled_scan: ScheduledScanConfig = field(default_factory=ScheduledScanConfig)
-    database_path: str = "lnp_database.db"
-    
+    database_path: str = "lnp.db"
+
     @classmethod
-    def load(cls, path: str) -> "Config":
-        # ... (rest of load method logic is handled by global functions below)
-        pass
-
-
-# ... (skipping unchanged code) ...
-
-def build_config(data: Dict[str, Any]) -> Config:
-    """Build Config dataclass from raw dict."""
-    # ...
-    eero = _dataclass_from_dict(
-        EeroConfig, data.get("eero", {})
-    )
-    scheduled_scan = _dataclass_from_dict(
-        ScheduledScanConfig, data.get("scheduled_scan", {})
-    )
-    log_level = data.get("log_level", "INFO")
-
-    return Config(
-        capture=capture,
-        detection=detection,
-        active_scanning=active_scanning,
-        vulnerability_scanning=vulnerability_scanning,
-        notification=notifications,
-        eero=eero,
-        scheduled_scan=scheduled_scan,
-        log_level=log_level,
-    )
+    def load(cls, path: Optional[str] = None) -> "Config":
+        return load_config(path)
 
 
 def _merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
     """Deep merge override into base dict."""
     for key, value in override.items():
-        if (
-            key in base
-            and isinstance(base[key], dict)
-            and isinstance(value, dict)
-        ):
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
             base[key] = _merge_dict(base[key], value)
         else:
             base[key] = value
@@ -235,13 +204,10 @@ def load_config(path: Optional[str] = None) -> Config:
 
 def build_config(data: Dict[str, Any]) -> Config:
     """Build Config dataclass from raw dict."""
-    print(f"DEBUG: Raw web config: {data.get('web')}")
     capture = _dataclass_from_dict(CaptureConfig, data.get("capture", {}))
     detection_data = data.get("detection", {})
     detection = DetectionConfig(
-        port_scan=_dataclass_from_dict(
-            PortScanRuleConfig, detection_data.get("port_scan", {})
-        ),
+        port_scan=_dataclass_from_dict(PortScanRuleConfig, detection_data.get("port_scan", {})),
         suspicious_ports=_dataclass_from_dict(
             SuspiciousPortRuleConfig,
             detection_data.get("suspicious_ports", {}),
@@ -255,6 +221,7 @@ def build_config(data: Dict[str, Any]) -> Config:
             detection_data.get("dns_exfiltration", {}),
         ),
         trusted_ips=detection_data.get("trusted_ips", []),
+        tsunami=_dataclass_from_dict(TsunamiConfig, detection_data.get("tsunami", {})),
     )
     active_scanning = _dataclass_from_dict(
         ActiveScanningConfig, data.get("active_scanning", {})
@@ -265,14 +232,13 @@ def build_config(data: Dict[str, Any]) -> Config:
     notifications = _dataclass_from_dict(
         NotificationConfig, data.get("notification", {})
     )
-    eero = _dataclass_from_dict(
-        EeroConfig, data.get("eero", {})
-    )
+    eero = _dataclass_from_dict(EeroConfig, data.get("eero", {}))
     scheduled_scan = _dataclass_from_dict(
         ScheduledScanConfig, data.get("scheduled_scan", {})
     )
     web = _dataclass_from_dict(WebConfig, data.get("web", {}))
     log_level = data.get("log_level", "INFO")
+    database_path = data.get("database_path", Config.database_path)
 
     return Config(
         capture=capture,
@@ -284,6 +250,7 @@ def build_config(data: Dict[str, Any]) -> Config:
         web=web,
         scheduled_scan=scheduled_scan,
         log_level=log_level,
+        database_path=database_path,
     )
 
 

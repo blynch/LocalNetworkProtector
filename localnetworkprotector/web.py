@@ -1,113 +1,219 @@
-import logging
-from flask import Flask, render_template, request, redirect, url_for, flash
-from datetime import datetime
 import json
-import sqlite3
+import logging
+from functools import wraps
+
+from flask import (
+    Flask,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from werkzeug.security import check_password_hash
 
 log = logging.getLogger(__name__)
 
+
 def create_app(config, db_manager, monitor_service):
     app = Flask(__name__)
-    app.secret_key = 'dev-secret-key-change-in-prod'  # Simple key for flash messages
+    app.secret_key = config.web.session_secret or "dev-secret-key-change-in-prod"
 
-    @app.template_filter('json_load')
+    @app.template_filter("json_load")
     def json_load_filter(s):
-        if not s: return {}
+        if not s:
+            return {}
         try:
             return json.loads(s)
-        except:
+        except Exception:
             return {}
 
-    @app.route('/')
+    def auth_enabled() -> bool:
+        return bool(config.web.auth_enabled)
+
+    def is_authenticated() -> bool:
+        return bool(session.get("authenticated"))
+
+    def verify_credentials(username: str, password: str) -> bool:
+        if username != config.web.username:
+            return False
+        if config.web.password_hash:
+            return check_password_hash(config.web.password_hash, password)
+        if config.web.password is not None:
+            return password == config.web.password
+        return False
+
+    def configured_api_tokens() -> set[str]:
+        return {token for token in config.web.api_tokens if token}
+
+    def api_token_is_valid() -> bool:
+        tokens = configured_api_tokens()
+        if not tokens:
+            return False
+        header_value = request.headers.get("Authorization", "")
+        if header_value.startswith("Bearer "):
+            token = header_value[7:].strip()
+            if token in tokens:
+                return True
+        api_key = request.headers.get("X-API-Key", "").strip()
+        return api_key in tokens if api_key else False
+
+    def login_required(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            if auth_enabled() and not is_authenticated():
+                return redirect(url_for("login", next=request.path))
+            return view(*args, **kwargs)
+
+        return wrapped
+
+    def api_auth_required(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            if api_token_is_valid():
+                return view(*args, **kwargs)
+            if not configured_api_tokens() and (not auth_enabled() or is_authenticated()):
+                return view(*args, **kwargs)
+            if auth_enabled() and is_authenticated():
+                return view(*args, **kwargs)
+            return jsonify({"error": "unauthorized"}), 401
+
+        return wrapped
+
+    def get_positive_int(param: str, default: int, maximum: int = 200) -> int:
+        try:
+            return max(1, min(int(request.args.get(param, str(default))), maximum))
+        except ValueError:
+            return default
+
+    @app.context_processor
+    def inject_auth_state():
+        return {
+            "auth_enabled": auth_enabled(),
+            "is_authenticated": is_authenticated(),
+        }
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if not auth_enabled():
+            return redirect(url_for("index"))
+        if request.method == "POST":
+            username = request.form.get("username", "")
+            password = request.form.get("password", "")
+            if verify_credentials(username, password):
+                session["authenticated"] = True
+                session["username"] = username
+                flash("Signed in successfully.", "success")
+                next_url = request.args.get("next") or url_for("index")
+                return redirect(next_url)
+            flash("Invalid username or password.", "danger")
+        return render_template("login.html")
+
+    @app.route("/logout", methods=["POST"])
+    @login_required
+    def logout():
+        session.clear()
+        flash("Signed out.", "success")
+        return redirect(url_for("login"))
+
+    @app.route("/")
+    @login_required
     def index():
-        # Quick stats
-        device_count = 0
-        scan_count = 0
-        recent_alerts = []
-        
-        try:
-            devices = db_manager.get_known_eero_macs()
-            device_count = len(devices)
-            
-            # Get scan count
-            conn = sqlite3.connect(db_manager.db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM scans")
-            scan_count = cursor.fetchone()[0]
-            
-            # Get Tsunami count
-            # Reuse the LIKE logic for now, or trust database manager method if we want to add a count method there.
-            # For simplicity, let's just count matching findings here.
-            cursor.execute("SELECT COUNT(*) FROM findings WHERE details_json LIKE '%\"service\": \"tsunami-scanner\"%'")
-            tsunami_count = cursor.fetchone()[0]
+        stats = db_manager.get_dashboard_stats()
+        recent_alerts = db_manager.get_recent_findings(limit=5)
+        return render_template(
+            "index.html",
+            device_count=stats["device_count"],
+            scan_count=stats["scan_count"],
+            tsunami_count=stats["tsunami_count"],
+            recent_alerts=recent_alerts,
+        )
 
-            # Get recent 5 findings
-            cursor.execute("SELECT * FROM findings ORDER BY id DESC LIMIT 5")
-            cols = [desc[0] for desc in cursor.description]
-            recent_alerts = [dict(zip(cols, row)) for row in cursor.fetchall()]
-            conn.close()
-            
-        except Exception as e:
-            log.error("Error fetching dashboard stats: %s", e)
-            tsunami_count = 0
-            
-        return render_template('index.html', 
-                             device_count=device_count, 
-                             scan_count=scan_count,
-                             tsunami_count=tsunami_count,
-                             recent_alerts=recent_alerts)
-
-    @app.route('/devices')
+    @app.route("/devices")
+    @login_required
     def devices():
-        eero_devices = []
-        try:
-            conn = sqlite3.connect(db_manager.db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM eero_devices ORDER BY last_seen DESC")
-            cols = [desc[0] for desc in cursor.description]
-            eero_devices = [dict(zip(cols, row)) for row in cursor.fetchall()]
-            conn.close()
-        except Exception as e:
-            log.error("Error fetching devices: %s", e)
-            
-        return render_template('devices.html', devices=eero_devices)
+        return render_template("devices.html", devices=db_manager.get_eero_devices())
 
-    @app.route('/scans')
+    @app.route("/scans")
+    @login_required
     def scans():
-        scan_history = []
-        try:
-            conn = sqlite3.connect(db_manager.db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM scans ORDER BY timestamp DESC LIMIT 50")
-            cols = [desc[0] for desc in cursor.description]
-            scan_history = [dict(zip(cols, row)) for row in cursor.fetchall()]
-            conn.close()
-        except Exception as e:
-            log.error("Error fetching scans: %s", e)
-            
-        return render_template('scans.html', scans=scan_history)
+        status = request.args.get("status") or None
+        page = get_positive_int("page", 1, 10000)
+        per_page = get_positive_int("per_page", 25, 100)
+        result = db_manager.get_scan_history_page(page=page, per_page=per_page, status=status)
+        return render_template(
+            "scans.html",
+            scans=result["items"],
+            pagination=result,
+            selected_status=status or "",
+            per_page=per_page,
+        )
 
-    @app.route('/tsunami')
+    @app.route("/scans/<int:scan_id>")
+    @login_required
+    def scan_details(scan_id: int):
+        findings_page = get_positive_int("findings_page", 1, 10000)
+        findings_per_page = get_positive_int("findings_per_page", 25, 100)
+        scan = db_manager.get_scan_details(
+            scan_id,
+            findings_page=findings_page,
+            findings_per_page=findings_per_page,
+        )
+        if scan is None:
+            flash(f"Scan #{scan_id} was not found.", "warning")
+            return redirect(url_for("scans"))
+        return render_template(
+            "scan_detail.html",
+            scan=scan,
+            findings_pagination=scan["findings_page"],
+            findings_per_page=findings_per_page,
+        )
+
+    @app.route("/api/scans")
+    @api_auth_required
+    def scans_api():
+        status = request.args.get("status") or None
+        page = get_positive_int("page", 1, 10000)
+        per_page = get_positive_int("per_page", 25, 100)
+        return jsonify(
+            db_manager.get_scan_history_page(page=page, per_page=per_page, status=status)
+        )
+
+    @app.route("/api/scans/<int:scan_id>")
+    @api_auth_required
+    def scan_detail_api(scan_id: int):
+        findings_page = get_positive_int("findings_page", 1, 10000)
+        findings_per_page = get_positive_int("findings_per_page", 25, 100)
+        scan = db_manager.get_scan_details(
+            scan_id,
+            findings_page=findings_page,
+            findings_per_page=findings_per_page,
+        )
+        if scan is None:
+            return jsonify({"error": "not_found", "scan_id": scan_id}), 404
+        return jsonify(scan)
+
+    @app.route("/tsunami")
+    @login_required
     def tsunami():
         findings = db_manager.get_tsunami_findings()
-        return render_template('tsunami.html', findings=findings)
+        return render_template("tsunami.html", findings=findings)
 
-    @app.route('/scan/trigger', methods=['POST'])
+    @app.route("/scan/trigger", methods=["POST"])
+    @login_required
     def trigger_scan():
-        ip = request.form.get('ip')
-        if ip and monitor_service:
-            log.info("Manual scan triggered via Web UI for %s", ip)
-            # Run in background to avoid blocking request? 
-            # Ideally yes, but _trigger_scan is relatively fast or we trust it.
-            # Actually _trigger_scan spawns a thread usually? 
-            # Looking at monitor.py, _trigger_scan calls active_scanner.scan_host which is blocking.
-            # We should wrap it.
-            import threading
-            threading.Thread(target=monitor_service._trigger_scan, args=(ip,)).start()
-            flash(f"Scan initiated for {ip}", "success")
+        ip = request.form.get("ip", "")
+        if not monitor_service:
+            flash("Monitor service unavailable.", "danger")
+            return redirect(url_for("devices"))
+
+        accepted, message = monitor_service.request_scan(ip, source="manual")
+        if accepted:
+            flash(f"Scan initiated for {ip}.", "success")
         else:
-            flash("Invalid IP or Monitor Service unavailable", "danger")
-        
-        return redirect(url_for('devices'))
+            flash(f"Scan not started for {ip}: {message}", "warning")
+        return redirect(url_for("devices"))
 
     return app

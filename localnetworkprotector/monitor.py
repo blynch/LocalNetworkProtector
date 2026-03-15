@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 from typing import Any, Callable, Optional
 
@@ -56,6 +57,10 @@ class MonitorService:
         self._scan_history: dict[str, float] = {}  # IP -> timestamp of last scan
         self._local_ip = None
 
+    def request_scan(self, ip: str, source: str = "manual") -> tuple[bool, str]:
+        """Validate and trigger a scan request."""
+        return self._trigger_scan(ip, source=source)
+
     def start(self) -> None:
         """Start sniffing packets using scapy."""
         if sniff is None:
@@ -86,25 +91,21 @@ class MonitorService:
                 log.info("Scheduled scanning enabled. Next run at %s", self.config.scheduled_scan.schedule_time)
 
         capture_cfg = self.config.capture
-
-        capture_cfg = self.config.capture
         
         # Determine local IP to ignore self-generated traffic
         if get_if_addr:
-             try:
-                 # 1. Try configured interface
-                 if capture_cfg.interface:
-                     self._local_ip = get_if_addr(capture_cfg.interface)
-                 
-                 # 2. Try default scapy interface if not found
-                 if not self._local_ip and getattr(conf, "iface", None):
-                      self._local_ip = get_if_addr(conf.iface)
+            try:
+                # 1. Try configured interface
+                if capture_cfg.interface:
+                    self._local_ip = get_if_addr(capture_cfg.interface)
 
-                 log.info("Identified local IP as %s", self._local_ip)
-             except Exception as e:
-                 log.warning("Could not determine local IP: %s", e)
-        
-                 log.warning("Could not determine local IP: %s", e)
+                # 2. Try default scapy interface if not found
+                if not self._local_ip and getattr(conf, "iface", None):
+                    self._local_ip = get_if_addr(conf.iface)
+
+                log.info("Identified local IP as %s", self._local_ip)
+            except Exception as e:
+                log.warning("Could not determine local IP: %s", e)
         
         # Merge configured trusted IPs
         self._trusted_ips = set(self.config.detection.trusted_ips)
@@ -133,25 +134,77 @@ class MonitorService:
         finally:
             self._running = False
 
-    def _trigger_scan(self, ip: str) -> None:
+    def _is_private_or_local_target(self, target: ipaddress._BaseAddress | ipaddress._BaseNetwork) -> bool:
+        if isinstance(target, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
+            return (
+                target.is_private
+                or target.is_loopback
+                or target.is_link_local
+                or target.is_reserved
+            )
+        return (
+            target.is_private
+            or target.is_loopback
+            or target.is_link_local
+            or target.is_reserved
+        )
+
+    def _matches_allowed_target(self, ip: ipaddress._BaseAddress) -> bool:
+        for entry in self.config.active_scanning.allowed_targets:
+            try:
+                candidate = ipaddress.ip_network(entry, strict=False)
+            except ValueError:
+                try:
+                    candidate_ip = ipaddress.ip_address(entry)
+                except ValueError:
+                    log.warning("Ignoring invalid allowed_targets entry: %s", entry)
+                    continue
+                if ip == candidate_ip:
+                    return True
+                continue
+
+            if ip in candidate:
+                return True
+        return False
+
+    def _scan_target_allowed(self, ip: str) -> tuple[bool, str]:
+        try:
+            target_ip = ipaddress.ip_address(ip)
+        except ValueError:
+            return False, f"Invalid IP address: {ip}"
+
+        if self._is_private_or_local_target(target_ip):
+            return True, "allowed private/local target"
+
+        if self._matches_allowed_target(target_ip):
+            return True, "allowed by active_scanning.allowed_targets"
+
+        if self.config.active_scanning.allow_public_targets:
+            return True, "allowed by allow_public_targets"
+
+        return (
+            False,
+            "Target is not private/local and is not allowlisted in active_scanning.allowed_targets",
+        )
+
+    def _trigger_scan(self, ip: str, source: str = "automatic") -> tuple[bool, str]:
         """Trigger active scan and vulnerability check for an IP."""
         if not self.config.active_scanning.enabled:
-            return
+            return False, "Active scanning is disabled"
         if not ip:
-            return
+            return False, "No IP address provided"
 
-        import time
+        allowed, reason = self._scan_target_allowed(ip)
+        if not allowed:
+            log.warning("Rejected %s scan request for %s: %s", source, ip, reason)
+            return False, reason
+
         now = time.time()
         last_scan = self._scan_history.get(ip, 0)
         interval_seconds = self.config.active_scanning.rescan_interval_minutes * 60
 
         if (now - last_scan) < interval_seconds:
-            # Already scanned recently
-            return
-        
-        # Only scan private IPs to avoid scanning the internet
-        # Simple check for 192.168, 10., 172.16-31.
-        # For now we assume local network usage as per tool name.
+            return False, "Target was scanned recently and is still in cooldown"
         
         self._scan_history[ip] = now
         
@@ -159,15 +212,21 @@ class MonitorService:
             scan_id = self.database.record_scan(ip, status="STARTED")
         else:
             scan_id = None
-            
-        services = self.active_scanner.scan_host(ip)
-        
+
+        services = self.active_scanner.scan_host(
+            ip,
+            ports=self.config.active_scanning.ports,
+            arguments=self.config.active_scanning.arguments,
+        )
+
         status = "FAILED"
         port_count = 0
         if services is not None:
-             status = "COMPLETED"
-             port_count = len(services)
-             
+            status = "COMPLETED"
+            port_count = len(services)
+        if self.database:
+            self.database.update_scan_status(scan_id, status)
+
         if self.telemetry:
             self.telemetry.record_scan(status, ip)
             if status == "COMPLETED":
@@ -175,23 +234,38 @@ class MonitorService:
             
         # Run Tsunami if configured
         if self.tsunami_scanner:
-             try:
-                 tsunami_vulns = self.tsunami_scanner.scan(ip)
-                 if tsunami_vulns:
-                     self._report_vulns(tsunami_vulns, ip, port="0", product="Tsunami", services={'service': 'tsunami-scanner'}, scan_id=scan_id)
-             except Exception as e:
-                 log.error("Tsunami scan error for %s: %s", ip, e)
+            try:
+                tsunami_vulns = self.tsunami_scanner.scan(ip)
+                if tsunami_vulns:
+                    self._report_vulns(
+                        tsunami_vulns,
+                        ip,
+                        port="0",
+                        product="Tsunami",
+                        services={"service": "tsunami-scanner"},
+                        scan_id=scan_id,
+                    )
+            except Exception as e:
+                log.error("Tsunami scan error for %s: %s", ip, e)
 
         if not services:
-            return
+            return status == "COMPLETED", "Scan completed"
 
         for svc in services:
             vulns = self.vulnerability_manager.check_service(
                 product=svc.get("product", ""),
                 version=svc.get("version", ""),
-                cpe=svc.get("cpe", "")
+                cpe=svc.get("cpe", ""),
             )
-            self._report_vulns(vulns, ip, svc['port'], svc['product'], services={'port': svc['port'], 'service': svc['service']}, scan_id=scan_id)
+            self._report_vulns(
+                vulns,
+                ip,
+                svc["port"],
+                svc["product"],
+                services={"port": svc["port"], "service": svc["service"]},
+                scan_id=scan_id,
+            )
+        return True, "Scan completed"
 
     def _report_vulns(self, vulns: list, ip: str, port: str, product: str, services: dict, scan_id: Optional[int] = None):
         for v in vulns:
@@ -309,7 +383,7 @@ class MonitorService:
                 )
                 log.info(desc)
                 if self.config.active_scanning.enabled and dev.get('ip'):
-                     self._trigger_scan(dev['ip'])
+                    self._trigger_scan(dev["ip"], source="eero")
                      
                 self.alert_callback(alert)
                 
@@ -335,13 +409,23 @@ class MonitorService:
 
         total_hosts = 0
         for subnet in subnets:
+            try:
+                network = ipaddress.ip_network(subnet, strict=False)
+            except ValueError:
+                log.warning("Skipping invalid scheduled_scan target_subnets entry: %s", subnet)
+                continue
+            if not self._is_private_or_local_target(network) and not self.config.active_scanning.allow_public_targets:
+                log.warning(
+                    "Skipping scheduled scan for %s because it is public and allow_public_targets is disabled.",
+                    subnet,
+                )
+                continue
             hosts = self.active_scanner.discover_hosts(subnet)
             total_hosts += len(hosts)
             for ip in hosts:
                 # Trigger full scan and vuln check
-                self._trigger_scan(ip)
+                self._trigger_scan(ip, source="scheduled")
                 # Sleep a bit to be gentle?
                 time.sleep(5) 
         
         log.info("Scheduled scan completed. Discovered and scanned %d hosts.", total_hosts)
-

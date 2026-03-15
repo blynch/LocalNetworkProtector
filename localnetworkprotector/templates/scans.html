@@ -5,6 +5,27 @@
     <h2><i class="bi bi-activity"></i> Scan History</h2>
 </div>
 
+<form method="GET" class="row g-3 mb-3">
+    <div class="col-sm-4 col-md-3">
+        <select class="form-select" name="status">
+            <option value="" {% if not selected_status %}selected{% endif %}>All statuses</option>
+            <option value="STARTED" {% if selected_status == 'STARTED' %}selected{% endif %}>Started</option>
+            <option value="COMPLETED" {% if selected_status == 'COMPLETED' %}selected{% endif %}>Completed</option>
+            <option value="FAILED" {% if selected_status == 'FAILED' %}selected{% endif %}>Failed</option>
+        </select>
+    </div>
+    <div class="col-sm-4 col-md-2">
+        <select class="form-select" name="per_page">
+            {% for option in [10, 25, 50, 100] %}
+            <option value="{{ option }}" {% if per_page == option %}selected{% endif %}>{{ option }} / page</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-sm-4 col-md-2">
+        <button type="submit" class="btn btn-dark w-100">Filter</button>
+    </div>
+</form>
+
 <div class="card">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -14,7 +35,9 @@
                         <th>ID</th>
                         <th>Target</th>
                         <th>Status</th>
+                        <th>Findings</th>
                         <th>Time</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -28,7 +51,15 @@
                                 {{ scan.status }}
                             </span>
                         </td>
+                        <td>{{ scan.finding_count }}</td>
                         <td>{{ scan.timestamp }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('scan_details', scan_id=scan.id) }}" class="btn btn-sm btn-outline-dark">Details</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">No scans recorded for this filter.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -36,4 +67,20 @@
         </div>
     </div>
 </div>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-3" aria-label="Scan pagination">
+    <ul class="pagination">
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('scans', status=selected_status, per_page=per_page, page=pagination.page - 1) }}">Previous</a>
+        </li>
+        <li class="page-item disabled">
+            <span class="page-link">Page {{ pagination.page }} of {{ pagination.pages }}</span>
+        </li>
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('scans', status=selected_status, per_page=per_page, page=pagination.page + 1) }}">Next</a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
 {% endblock %}

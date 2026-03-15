@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/LocalNetworkProtector
-ExecStart=/opt/LocalNetworkProtector/venv/bin/python3 -u /opt/LocalNetworkProtector/lnp_main.py --config config.yaml
+ExecStart=/opt/LocalNetworkProtector/venv/bin/lnp --config /etc/localnetworkprotector/config.yaml
 Restart=always
 RestartSec=5
 

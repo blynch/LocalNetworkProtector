@@ -56,6 +56,44 @@ def configure_logging(level: str) -> None:
     )
 
 
+def validate_web_config(config, log: logging.Logger) -> bool:
+    """Validate web/HTTPS configuration before starting the servers."""
+    if not config.web or not config.web.enabled:
+        return True
+
+    log.info(
+        "Effective web config: host=%s http_port=%s ssl_enabled=%s ssl_port=%s cert=%s key=%s",
+        config.web.host,
+        config.web.port,
+        config.web.ssl_enabled,
+        config.web.ssl_port,
+        config.web.ssl_cert,
+        config.web.ssl_key,
+    )
+
+    if not config.web.ssl_enabled:
+        return True
+
+    cert = config.web.ssl_cert
+    key = config.web.ssl_key
+    missing = []
+    if not cert:
+        missing.append("ssl_cert is not configured")
+    elif not Path(cert).exists():
+        missing.append(f"ssl_cert does not exist: {cert}")
+
+    if not key:
+        missing.append("ssl_key is not configured")
+    elif not Path(key).exists():
+        missing.append(f"ssl_key does not exist: {key}")
+
+    if missing:
+        log.error("HTTPS startup blocked: %s", "; ".join(missing))
+        return False
+
+    return True
+
+
 from localnetworkprotector.eero_manager import EeroManager
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,6 +105,9 @@ def main(argv: list[str] | None = None) -> int:
     log = logging.getLogger("lnp")
     log.info("LocalNetworkProtector starting up.")
 
+    if not validate_web_config(config, log):
+        return 1
+
     detection_engine = DetectionEngine(config.detection)
     notifier = EmailNotifier(config.notification)
     
@@ -75,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     tsunami_scanner = TsunamiScanner(config.detection.tsunami)
 
     # Observability
-    db = DatabaseManager()
+    db = DatabaseManager(config.database_path)
     db.init_db()
     
     telemetry = TelemetryManager()
@@ -118,23 +159,20 @@ def main(argv: list[str] | None = None) -> int:
         if config.web.ssl_enabled:
             cert = config.web.ssl_cert
             key = config.web.ssl_key
-            if cert and key and Path(cert).exists() and Path(key).exists():
-                log.info("Starting Web Admin Console on HTTPS port %d", config.web.ssl_port)
-                ssl_context = (cert, key)
-                https_thread = threading.Thread(
-                    target=app.run, 
-                    kwargs={
-                        'host': config.web.host, 
-                        'port': config.web.ssl_port, 
-                        'debug': False, 
-                        'use_reloader': False,
-                        'ssl_context': ssl_context
-                    },
-                    daemon=True
-                )
-                https_thread.start()
-            else:
-                log.warning("HTTPS enabled but cert/key not found or not specified. Skipping HTTPS specific port.")
+            log.info("Starting Web Admin Console on HTTPS port %d", config.web.ssl_port)
+            ssl_context = (cert, key)
+            https_thread = threading.Thread(
+                target=app.run,
+                kwargs={
+                    'host': config.web.host,
+                    'port': config.web.ssl_port,
+                    'debug': False,
+                    'use_reloader': False,
+                    'ssl_context': ssl_context
+                },
+                daemon=True
+            )
+            https_thread.start()
 
     def _graceful_shutdown(signum, frame):  # type: ignore[unused-argument]
         log.info("Received signal %s; flushing notifications and exiting.", signum)

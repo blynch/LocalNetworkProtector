@@ -37,7 +37,12 @@ class ActiveScanner:
     def is_available(self) -> bool:
         return self._nm is not None
 
-    def scan_host(self, ip: str, ports: str = "22-1024") -> Optional[List[Dict[str, str]]]:
+    def scan_host(
+        self,
+        ip: str,
+        ports: str = "22-1024",
+        arguments: str = "-sV --version-light",
+    ) -> Optional[List[Dict[str, str]]]:
         """
         Scan a single host for service versions.
         Returns:
@@ -48,10 +53,9 @@ class ActiveScanner:
         if not self.is_available():
             return None
 
-        log.info("Starting active scan on %s ports %s", ip, ports)
+        log.info("Starting active scan on %s ports %s args=%s", ip, ports, arguments)
         try:
-            # -sV: Version detection
-            self._nm.scan(ip, ports, arguments="-sV --version-light")
+            self._nm.scan(ip, ports, arguments=arguments)
         except Exception as e:
             log.error("Scan failed for %s: %s", ip, e)
             return None

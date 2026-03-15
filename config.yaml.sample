@@ -12,9 +12,11 @@ capture:
 
 active_scanning:
   enabled: false
+  ports: "top-100"
+  arguments: "-sV -T4"
   rescan_interval_minutes: 60
-
-  targets: [] # List of subnets or IPs to scan, e.g. ["192.168.1.0/24"]
+  allowed_targets: [] # Optional explicit IPs/CIDRs for non-private scans
+  allow_public_targets: false # Keep false unless you intentionally scan public IPs
 
 vulnerability_scanning:
   enabled: false
@@ -23,6 +25,7 @@ vulnerability_scanning:
   min_severity: high # medium, high, critical
 
 detection:
+  trusted_ips: [] # List of IPs to ignore entirely (e.g. ["192.168.1.50"])
   port_scan:
     enabled: true
     time_window_seconds: 60
@@ -33,7 +36,6 @@ detection:
       - "*.local" # Ignore mDNS/Sonos
       - "*.arpa"
     severity: high
-    trusted_ips: [] # List of IPs to ignore (e.g. ["192.168.1.50"])
   suspicious_ports:
     enabled: true
     ports: [23, 2323, 3389, 5900, 8888]
@@ -56,11 +58,11 @@ notification:
   smtp_host: smtp.gmail.com
   smtp_port: 587
   use_tls: true
-  username: you@example.com
-  password: app-specific-password
-  sender: you@example.com
+  username: "you@example.com"
+  password: "app-specific-password"
+  sender: "you@example.com"
   recipients:
-    - you@example.com
+    - "you@example.com"
   min_severity: medium
   cool_down_seconds: 300
 
@@ -75,13 +77,21 @@ scheduled_scan:
   target_subnets:
     - "192.168.1.0/24"
 
+database_path: "lnp.db"
+
 web:
   enabled: true
   host: "0.0.0.0"
   port: 5000
+  auth_enabled: true
+  username: "admin"
+  password: "" # Prefer password_hash in production
+  password_hash: "" # Generate with python3 scripts/generate_password_hash.py
+  session_secret: "" # Set a long random string before enabling auth
+  api_tokens: [] # Optional tokens for /api/* via Authorization: Bearer or X-API-Key
   # HTTPS Configuration
-  # Run ./scripts/generate_cert.sh to create certificates
-  ssl_enabled: false
+  # Run ./scripts/generate_cert.sh on the Pi to create certificates
+  ssl_enabled: true
   ssl_port: 5443
-  ssl_cert: "" # e.g. "/opt/LocalNetworkProtector/certs/lnp-cert.pem"
-  ssl_key: "" # e.g. "/opt/LocalNetworkProtector/certs/lnp-key.pem"
+  ssl_cert: "/opt/LocalNetworkProtector/certs/lnp-cert.pem"
+  ssl_key: "/opt/LocalNetworkProtector/certs/lnp-key.pem"

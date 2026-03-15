@@ -1,117 +1,119 @@
 # LocalNetworkProtector - Raspberry Pi Installation Guide
 
-## 1. System Requirements
-- Raspberry Pi (3B+ or 4 recommended) running Raspberry Pi OS (latest).
-- Internet connection.
+## 1. Requirements
+- Raspberry Pi 3B+ / 4 / 5 running Raspberry Pi OS.
+- Python 3.9+.
+- Internet access for `apt` and `pip` during install.
 
-## 2. Install System Dependencies
-Update your system and install required tools:
+## 2. Build The Release Archive On Your Dev Machine
+From the repository root:
+
 ```bash
-sudo apt-get update
-sudo apt-get install -y nmap libpcap0.8-dev
+bash scripts/build_release.sh
 ```
 
-## 3. Systemd Service (Auto-Start)
-To run as a system service (so it starts on boot and logs to journald):
+This produces:
 
-1.  **Copy the service file**:
-    ```bash
-    sudo cp localnetworkprotector.service /etc/systemd/system/
-    ```
-2.  **Reload Daemon**:
-    ```bash
-    sudo systemctl daemon-reload
-    ```
-3.  **Enable & Start**:
-    ```bash
-    sudo systemctl enable localnetworkprotector
-    sudo systemctl start localnetworkprotector
-    ```
-4.  **View Logs**:
-    ```bash
-    # View live logs
-    sudo journalctl -u localnetworkprotector -f
-    ```
-
-## 4. Install Docker (For Observability)
-If you want to use the Grafana dashboard, you need Docker and Docker Compose.
 ```bash
-# Install Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
+dist/LocalNetworkProtector_v70.tar.gz
+```
 
-# Add your user to the docker group (so you don't need sudo for docker commands)
+## 3. Copy The Archive To The Pi
+Example:
+
+```bash
+scp dist/LocalNetworkProtector_v70.tar.gz pi@<pi-ip>:/home/pi/
+```
+
+## 4. Extract And Install On The Pi
+On the Raspberry Pi:
+
+```bash
+mkdir LocalNetworkProtector
+tar -xzf LocalNetworkProtector_v70.tar.gz -C LocalNetworkProtector
+cd LocalNetworkProtector
+sudo bash scripts/install_rpi.sh --enable-service
+```
+
+This installs the app under `/opt/LocalNetworkProtector`, creates a virtualenv, installs the package, copies the systemd unit, and rolls out only `/etc/localnetworkprotector/config.yaml.sample`.
+
+## 5. Configure The Pi
+Create and edit the installed config:
+
+```bash
+sudo cp /etc/localnetworkprotector/config.yaml.sample /etc/localnetworkprotector/config.yaml
+sudo nano /etc/localnetworkprotector/config.yaml
+```
+
+At minimum:
+- Set `capture.interface` to the correct network interface such as `eth0` or `wlan0`.
+- Enable `active_scanning` only if you want active probing.
+- Keep `active_scanning.allow_public_targets: false` unless you intentionally want to scan public IPs.
+- If enabling web auth, set `web.session_secret` and either `web.password_hash` or `web.password`.
+
+To generate a password hash:
+
+```bash
+cd /opt/LocalNetworkProtector
+./venv/bin/python scripts/generate_password_hash.py
+```
+
+## 6. Validate The Service
+Check status:
+
+```bash
+sudo systemctl status localnetworkprotector
+```
+
+Stream logs:
+
+```bash
+sudo journalctl -u localnetworkprotector -f
+```
+
+Smoke test the HTTP UI:
+- Open `http://<pi-ip>:5000`
+- If auth is enabled, sign in with the configured credentials.
+
+Smoke test the API:
+
+```bash
+curl http://<pi-ip>:5000/api/scans
+```
+
+If `web.api_tokens` is configured:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://<pi-ip>:5000/api/scans
+```
+
+## 7. Optional: Observability Stack
+If you want Grafana and Prometheus:
+
+```bash
+sudo apt-get install -y docker.io docker-compose-plugin
 sudo usermod -aG docker $USER
-
-# Install Docker Compose (if not included in newer docker plugins)
-sudo apt-get install -y docker-compose-plugin
 ```
-*Note: You may need to log out and back in for the group change to take effect.*
 
-## 4. Install Application
-1.  **Extract the archive**:
-    ```bash
-    tar -xzvf LocalNetworkProtector_v54.tar.gz
-    cd LocalNetworkProtector
-    ```
+Then from `/opt/LocalNetworkProtector`:
 
-2.  **Authenticate (One-Time)**:
-    Run the login script (requires sudo to save session file):
-    ```bash
-    sudo ./venv/bin/python3 scripts/eero_login.py
-    ```
-    Follow the prompts to enter your email/phone and the verification code.s.
-    ```bash
-    chmod +x setup.sh run.sh
-    ```bash
-    chmod +x setup.sh run.sh
-    ./setup.sh
-    ```
-
-3.  **Enable HTTPS (Optional)**:
-    Run the certificate generation script:
-    ```bash
-    ./scripts/generate_cert.sh
-    ```
-    ./scripts/generate_cert.sh
-    ```
-    Then update `config.yaml` with the paths output by the script.
-    - HTTP will remain on port `5000`.
-    - HTTPS will be available on port `5443` (configurable via `ssl_port`).
-
-## 5. Configuration
-1.  Copy the sample config:
-    ```bash
-    cp -n config.sample.yaml config.yaml
-    ```
-    *Note: The `-n` flag prevents overwriting an existing config.*
-2.  Edit `config.yaml`:
-    - Enable `active_scanning` if desired.
-    - Enable `vulnerability_scanning`.
-    - Set `interface` (e.g., `wlan0` or `eth0`).
-
-## 6. Running
-
-### Start Observability Stack (Optional)
-This starts Prometheus and Grafana in the background.
 ```bash
 docker compose up -d
 ```
-- Dashboards available at: `http://<pi-ip>:3000` (Default user/pass: `admin`/`admin`)
 
-### Start Protector
-Run the main application using the wrapper script:
+Grafana will be available at `http://<pi-ip>:3000`.
+
+## 8. Updating A Pi
+Copy a newer release archive to the Pi, extract it, and rerun:
+
 ```bash
-./run.sh --config config.yaml
+sudo bash scripts/install_rpi.sh --enable-service
 ```
-*Note: `run.sh` uses `sudo` internally because packet capture requires root privileges.*
 
-## 7. Troubleshooting
-- **"externally-managed-environment"**: Ensure you used `./setup.sh` and are running with `./run.sh`.
-- **Permission denied**: Make sure scripts are executable (`chmod +x ...`) and `run.sh` is used.
-- **Dependency Errors**: The `setup.sh` script should automatically pull compatible versions of libraries.
-- **Port 3000 not open**:
-    1. Check if containers are running: `docker compose ps`
-    2. Check logs: `docker compose logs grafana`
-    3. If permission errors occur, we have switched to named volumes in V7 to fix this.
+The installer preserves an existing `/etc/localnetworkprotector/config.yaml`.
 
+## 9. Troubleshooting
+- If the service fails immediately, check `sudo journalctl -u localnetworkprotector -n 200`.
+- If packet capture fails, confirm the configured interface exists with `ip addr`.
+- If the web UI is unreachable, confirm port `5000` is open and the service is running.
+- If `nmap` scans fail, confirm `nmap` is installed and callable with `nmap --version`.

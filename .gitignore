@@ -7,7 +7,11 @@ venv/
 # Archives
 *.tar.gz
 *.zip
+dist/
+build/
+*.egg-info/
 
 # Editor
 .DS_Store
 eero.session
+config.yaml.live

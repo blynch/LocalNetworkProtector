@@ -6,7 +6,7 @@ python3 -m venv venv
 
 echo "Installing dependencies..."
 ./venv/bin/pip install --upgrade pip
-./venv/bin/pip install -r requirements.txt
+./venv/bin/pip install .
 
 echo "Ensuring nmap is installed..."
 sudo apt-get install -y nmap || echo "Warning: Failed to install nmap. Please ensure it is installed."

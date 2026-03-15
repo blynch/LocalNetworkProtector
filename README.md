@@ -31,20 +31,31 @@ See the **[Raspberry Pi Installation Guide](README_RPI.md)** for detailed, step-
 1.  **Install dependencies**:
     ```bash
     sudo apt-get install nmap libpcap0.8-dev
-    pip install -r requirements.txt
+    ./setup.sh
     ```
 
 2.  **Configure**:
     ```bash
-    cp config.sample.yaml config.yaml
+    cp config.yaml.sample config.yaml
     nano config.yaml
     ```
     Enable active scanning and vulnerability checks in the config if desired.
 
 3.  **Run**:
     ```bash
-    sudo python3 lnp_main.py --config config.yaml
+    ./run.sh --config config.yaml
     ```
+
+### Build A Release Archive
+
+To create a deployable archive for Raspberry Pi:
+
+```bash
+bash scripts/build_release.sh
+```
+
+The output is written to `dist/LocalNetworkProtector-<version>.tar.gz`.
+The release archive is written as `dist/LocalNetworkProtector_v<release>.tar.gz` with flat root-level contents.
 
 ## Observability Stack
 
@@ -62,7 +73,9 @@ The application integrates with Prometheus and Grafana to visualize data.
 ## Development
 
 ### Running Tests
-(Add instructions for running tests if applicable, or remove this section)
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 ### Data & Logs
 - **Logs**: Output to stdout by default.
