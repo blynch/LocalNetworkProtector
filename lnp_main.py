@@ -18,6 +18,7 @@ from localnetworkprotector.tsunami import TsunamiScanner
 from localnetworkprotector.vulnerability import VulnerabilityManager
 from localnetworkprotector.database import DatabaseManager
 from localnetworkprotector.telemetry import TelemetryManager
+from localnetworkprotector.repo_scanner import RepoScanner
 import threading
 from localnetworkprotector import web
 
@@ -123,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     telemetry.initialize(prometheus_port=9464)
     # Initialize Eero Manager
     eero_manager = EeroManager(config.eero, database=db)
+    repo_scanner = RepoScanner(config.repo_scanning)
     
     monitor = MonitorService(
         config=config,
@@ -134,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         telemetry=telemetry,
         eero_manager=eero_manager,
         tsunami_scanner=tsunami_scanner,
+        repo_scanner=repo_scanner,
     )
 
     # Start Web Console

@@ -38,6 +38,15 @@ class ConfigLoadTests(unittest.TestCase):
                     "session_secret": "secret",
                     "api_tokens": ["token-1", "token-2"],
                 },
+                "repo_scanning": {
+                    "enabled": True,
+                    "schedule_time": "04:30",
+                    "github_account": "blynch",
+                    "repo_limit": 10,
+                    "local_workspace": "/opt/repos",
+                    "results_dir": "/opt/repo-results",
+                    "scalibr_binary": "/root/go/bin/scalibr",
+                },
             }
         )
 
@@ -60,6 +69,13 @@ class ConfigLoadTests(unittest.TestCase):
         self.assertEqual(config.web.password_hash, "hash")
         self.assertEqual(config.web.session_secret, "secret")
         self.assertEqual(config.web.api_tokens, ["token-1", "token-2"])
+        self.assertTrue(config.repo_scanning.enabled)
+        self.assertEqual(config.repo_scanning.schedule_time, "04:30")
+        self.assertEqual(config.repo_scanning.github_account, "blynch")
+        self.assertEqual(config.repo_scanning.repo_limit, 10)
+        self.assertEqual(config.repo_scanning.local_workspace, "/opt/repos")
+        self.assertEqual(config.repo_scanning.results_dir, "/opt/repo-results")
+        self.assertEqual(config.repo_scanning.scalibr_binary, "/root/go/bin/scalibr")
 
 
 if __name__ == "__main__":

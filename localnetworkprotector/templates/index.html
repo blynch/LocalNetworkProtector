@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card bg-primary text-white">
             <div class="card-body">
                 <h5 class="card-title"><i class="bi bi-router"></i> Eero Devices</h5>
@@ -11,7 +11,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card bg-success text-white">
             <div class="card-body">
                 <h5 class="card-title"><i class="bi bi-activity"></i> Total Scans</h5>
@@ -20,12 +20,21 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card bg-danger text-white">
             <div class="card-body">
                 <h5 class="card-title"><i class="bi bi-bug"></i> Tsunami Vulns</h5>
                 <h2 class="display-4">{{ tsunami_count }}</h2>
                 <a href="{{ url_for('tsunami') }}" class="btn btn-light btn-sm text-danger">View Findings</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-github"></i> Repo Vulns</h5>
+                <h2 class="display-4">{{ repo_vulnerability_count }}</h2>
+                <a href="{{ url_for('repo_scans') }}" class="btn btn-light btn-sm text-dark">View Repo Scans</a>
             </div>
         </div>
     </div>

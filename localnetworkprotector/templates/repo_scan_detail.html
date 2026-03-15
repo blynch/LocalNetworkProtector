@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2><i class="bi bi-github"></i> Repo Scan #{{ scan.id }}</h2>
+        <p class="text-muted mb-0">{{ scan.repo_name }} at {{ scan.timestamp }}</p>
+    </div>
+    <a href="{{ url_for('repo_scans') }}" class="btn btn-outline-secondary">Back</a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-muted small">Status</div>
+                <div class="fs-4">{{ scan.status }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-muted small">Repo</div>
+                <div class="fs-6">{{ scan.repo_name }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-muted small">Potential Vulns</div>
+                <div class="fs-4">{{ scan.vulnerability_count }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">Findings</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Vulnerability</th>
+                        <th>Severity</th>
+                        <th>Package</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for finding in scan.findings %}
+                    <tr>
+                        <td>{{ finding.vulnerability_id }}</td>
+                        <td>{{ finding.severity }}</td>
+                        <td>{{ finding.package_name }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted py-4">No findings recorded for this repo scan.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -77,6 +77,19 @@ scheduled_scan:
   target_subnets:
     - "192.168.1.0/24"
 
+repo_scanning:
+  enabled: false
+  schedule_time: "04:00" # HH:MM (24h)
+  github_account: "your-github-handle"
+  repo_limit: 25
+  include_private: true
+  include_archived: false
+  local_workspace: "/opt/LocalNetworkProtector/repo_mirror"
+  results_dir: "/opt/LocalNetworkProtector/repo_scan_results"
+  scalibr_binary: "/root/go/bin/scalibr"
+  scan_timeout_seconds: 1800
+  use_gitignore: true
+
 database_path: "lnp.db"
 
 web:

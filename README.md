@@ -9,6 +9,9 @@ LocalNetworkProtector is a lightweight application designed for Raspberry Pi dep
     - Automatically scans suspicious IPs (or manually configured ranges) using `nmap`.
     - *New*: Configurable re-scan interval to prevent flooding (default: 60 mins).
     - Checks detected services against the **NVD** (CPE) and **OSV.dev** (OSS-Fuzz) databases for known vulnerabilities.
+- **GitHub Repo Scanning**:
+    - Periodically syncs repos from a configured GitHub account using `gh`.
+    - Runs **OSV-SCALIBR** against each repo checkout and stores potential findings.
 
 - **Observability**:
     - **OpenTelemetry** metrics for scans, vulnerabilities, and alerts.
@@ -39,7 +42,7 @@ See the **[Raspberry Pi Installation Guide](README_RPI.md)** for detailed, step-
     cp config.yaml.sample config.yaml
     nano config.yaml
     ```
-    Enable active scanning and vulnerability checks in the config if desired.
+    Enable active scanning, vulnerability checks, and optional repo scanning in the config if desired.
 
 3.  **Run**:
     ```bash
@@ -54,8 +57,19 @@ To create a deployable archive for Raspberry Pi:
 bash scripts/build_release.sh
 ```
 
-The output is written to `dist/LocalNetworkProtector-<version>.tar.gz`.
 The release archive is written as `dist/LocalNetworkProtector_v<release>.tar.gz` with flat root-level contents.
+The current packaged release is `dist/LocalNetworkProtector_v72.tar.gz`.
+
+### GitHub Repo Scanning
+
+1. Authenticate GitHub CLI:
+   ```bash
+   gh auth login
+   ```
+2. Enable `repo_scanning` in `config.yaml`.
+3. Ensure `repo_scanning.scalibr_binary` points at your installed `scalibr` binary.
+4. If you are using the systemd service on Raspberry Pi, edit `/etc/localnetworkprotector/config.yaml`, not the copy under `/opt/LocalNetworkProtector`.
+5. View the results in the `Repo Scans` page or `/api/repo-scans`.
 
 ## Observability Stack
 
@@ -81,6 +95,7 @@ python3 -m unittest discover -s tests -v
 - **Logs**: Output to stdout by default.
 - **Database**: `lnp.db` (SQLite) contains the history of all active scans and findings.
 - **Metrics**: Exposed at `http://<host>:9464/metrics` for Prometheus.
+- **Repo Scan Results**: SCALIBR textproto results are stored in the configured `repo_scanning.results_dir`.
 
 ## License
 MIT

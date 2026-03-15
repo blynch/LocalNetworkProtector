@@ -122,6 +122,21 @@ class ScheduledScanConfig:
 
 
 @dataclass
+class RepoScanningConfig:
+    enabled: bool = False
+    schedule_time: str = "04:00"
+    github_account: str = ""
+    repo_limit: int = 25
+    include_private: bool = True
+    include_archived: bool = False
+    local_workspace: str = "repo_mirror"
+    results_dir: str = "repo_scan_results"
+    scalibr_binary: str = "scalibr"
+    scan_timeout_seconds: int = 1800
+    use_gitignore: bool = True
+
+
+@dataclass
 class EeroConfig:
     enabled: bool = False
     session_path: str = "eero.session"
@@ -156,6 +171,7 @@ class Config:
     eero: EeroConfig = field(default_factory=EeroConfig)
     web: WebConfig = field(default_factory=WebConfig)
     scheduled_scan: ScheduledScanConfig = field(default_factory=ScheduledScanConfig)
+    repo_scanning: RepoScanningConfig = field(default_factory=RepoScanningConfig)
     database_path: str = "lnp.db"
 
     @classmethod
@@ -236,6 +252,9 @@ def build_config(data: Dict[str, Any]) -> Config:
     scheduled_scan = _dataclass_from_dict(
         ScheduledScanConfig, data.get("scheduled_scan", {})
     )
+    repo_scanning = _dataclass_from_dict(
+        RepoScanningConfig, data.get("repo_scanning", {})
+    )
     web = _dataclass_from_dict(WebConfig, data.get("web", {}))
     log_level = data.get("log_level", "INFO")
     database_path = data.get("database_path", Config.database_path)
@@ -249,6 +268,7 @@ def build_config(data: Dict[str, Any]) -> Config:
         eero=eero,
         web=web,
         scheduled_scan=scheduled_scan,
+        repo_scanning=repo_scanning,
         log_level=log_level,
         database_path=database_path,
     )

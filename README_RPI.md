@@ -15,14 +15,14 @@ bash scripts/build_release.sh
 This produces:
 
 ```bash
-dist/LocalNetworkProtector_v70.tar.gz
+dist/LocalNetworkProtector_v72.tar.gz
 ```
 
 ## 3. Copy The Archive To The Pi
 Example:
 
 ```bash
-scp dist/LocalNetworkProtector_v70.tar.gz pi@<pi-ip>:/home/pi/
+scp dist/LocalNetworkProtector_v72.tar.gz pi@<pi-ip>:/home/pi/
 ```
 
 ## 4. Extract And Install On The Pi
@@ -30,7 +30,7 @@ On the Raspberry Pi:
 
 ```bash
 mkdir LocalNetworkProtector
-tar -xzf LocalNetworkProtector_v70.tar.gz -C LocalNetworkProtector
+tar -xzf LocalNetworkProtector_v72.tar.gz -C LocalNetworkProtector
 cd LocalNetworkProtector
 sudo bash scripts/install_rpi.sh --enable-service
 ```
@@ -50,6 +50,7 @@ At minimum:
 - Enable `active_scanning` only if you want active probing.
 - Keep `active_scanning.allow_public_targets: false` unless you intentionally want to scan public IPs.
 - If enabling web auth, set `web.session_secret` and either `web.password_hash` or `web.password`.
+- If enabling `repo_scanning`, set `repo_scanning.github_account` and authenticate `gh`.
 
 To generate a password hash:
 
@@ -57,6 +58,23 @@ To generate a password hash:
 cd /opt/LocalNetworkProtector
 ./venv/bin/python scripts/generate_password_hash.py
 ```
+
+To enable GitHub repo scanning:
+
+```bash
+gh auth login
+sudo nano /etc/localnetworkprotector/config.yaml
+```
+
+Then enable `repo_scanning` and set:
+- `github_account`
+- `local_workspace`
+- `results_dir`
+- `scalibr_binary`
+
+Important:
+- Edit the active service config at `/etc/localnetworkprotector/config.yaml`
+- Do not rely on copies under `/opt/LocalNetworkProtector` for runtime changes
 
 ## 6. Validate The Service
 Check status:
@@ -85,6 +103,12 @@ If `web.api_tokens` is configured:
 
 ```bash
 curl -H "Authorization: Bearer <token>" http://<pi-ip>:5000/api/scans
+```
+
+Smoke test repo scan API:
+
+```bash
+curl http://<pi-ip>:5000/api/repo-scans
 ```
 
 ## 7. Optional: Observability Stack
@@ -117,3 +141,5 @@ The installer preserves an existing `/etc/localnetworkprotector/config.yaml`.
 - If packet capture fails, confirm the configured interface exists with `ip addr`.
 - If the web UI is unreachable, confirm port `5000` is open and the service is running.
 - If `nmap` scans fail, confirm `nmap` is installed and callable with `nmap --version`.
+- If HTTPS does not come up, confirm `/etc/localnetworkprotector/config.yaml` has the `web.ssl_*` settings and that the cert/key files exist under `/opt/LocalNetworkProtector/certs`.
+- If repo scanning does not run, confirm `gh auth status` works for the service user and that `repo_scanning.scalibr_binary` points to the installed SCALIBR binary.

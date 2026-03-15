@@ -34,7 +34,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 apt-get update
-apt-get install -y python3 python3-venv python3-pip nmap libpcap0.8-dev rsync
+apt-get install -y python3 python3-venv python3-pip nmap libpcap0.8-dev rsync gh golang-go
 
 mkdir -p "$APP_DIR" "$CONFIG_DIR"
 rsync -a \
@@ -42,6 +42,7 @@ rsync -a \
   --exclude '.git' \
   --exclude 'dist' \
   --exclude 'config.yaml' \
+  --exclude 'config.yaml.live' \
   --exclude 'venv' \
   --exclude '.venv' \
   --exclude '__pycache__' \
@@ -51,6 +52,10 @@ rsync -a \
 python3 -m venv "$APP_DIR/venv"
 "$APP_DIR/venv/bin/pip" install --upgrade pip setuptools wheel
 "$APP_DIR/venv/bin/pip" install "$APP_DIR"
+
+if [[ -x "$APP_DIR/scripts/install_scalibr.sh" ]]; then
+  bash "$APP_DIR/scripts/install_scalibr.sh" || echo "Warning: SCALIBR install failed. Repo scanning will be unavailable."
+fi
 
 cp "$APP_DIR/config.yaml.sample" "$CONFIG_DIR/config.yaml.sample"
 

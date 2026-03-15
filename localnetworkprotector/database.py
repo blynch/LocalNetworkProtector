@@ -38,6 +38,27 @@ CREATE TABLE IF NOT EXISTS eero_devices (
     last_seen TEXT NOT NULL,
     details_json TEXT
 );
+
+CREATE TABLE IF NOT EXISTS repo_scans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    repo_name TEXT NOT NULL,
+    repo_url TEXT,
+    local_path TEXT,
+    status TEXT NOT NULL,
+    vulnerability_count INTEGER NOT NULL DEFAULT 0,
+    result_path TEXT
+);
+
+CREATE TABLE IF NOT EXISTS repo_scan_findings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_scan_id INTEGER NOT NULL,
+    vulnerability_id TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    package_name TEXT,
+    details_json TEXT,
+    FOREIGN KEY(repo_scan_id) REFERENCES repo_scans(id)
+);
 """
 
 class DatabaseManager:
@@ -182,7 +203,13 @@ class DatabaseManager:
 
     def get_dashboard_stats(self) -> Dict[str, int]:
         """Return top-level dashboard metrics."""
-        stats = {"device_count": 0, "scan_count": 0, "tsunami_count": 0}
+        stats = {
+            "device_count": 0,
+            "scan_count": 0,
+            "tsunami_count": 0,
+            "repo_scan_count": 0,
+            "repo_vulnerability_count": 0,
+        }
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -197,6 +224,12 @@ class DatabaseManager:
                     """
                 )
                 stats["tsunami_count"] = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM repo_scans")
+                stats["repo_scan_count"] = cursor.fetchone()[0]
+                cursor.execute(
+                    "SELECT COALESCE(SUM(vulnerability_count), 0) FROM repo_scans WHERE status = 'COMPLETED'"
+                )
+                stats["repo_vulnerability_count"] = cursor.fetchone()[0]
         except Exception as e:
             log.error("Failed to fetch dashboard stats: %s", e)
         return stats
@@ -383,3 +416,97 @@ class DatabaseManager:
             "has_prev": page > 1,
             "has_next": page < pages,
         }
+
+    def record_repo_scan(
+        self,
+        repo_name: str,
+        repo_url: str,
+        local_path: str,
+        status: str,
+        vulnerability_count: int,
+        result_path: str,
+    ) -> int:
+        try:
+            timestamp = datetime.now(tz=timezone.utc).isoformat()
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO repo_scans
+                    (timestamp, repo_name, repo_url, local_path, status, vulnerability_count, result_path)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (timestamp, repo_name, repo_url, local_path, status, vulnerability_count, result_path),
+                )
+                return cursor.lastrowid or -1
+        except Exception as e:
+            log.error("Failed to record repo scan for %s: %s", repo_name, e)
+            return -1
+
+    def record_repo_scan_finding(
+        self,
+        repo_scan_id: int,
+        vulnerability_id: str,
+        severity: str,
+        package_name: str,
+        details: Dict[str, Any],
+    ) -> None:
+        try:
+            details_json = json.dumps(details)
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO repo_scan_findings
+                    (repo_scan_id, vulnerability_id, severity, package_name, details_json)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (repo_scan_id, vulnerability_id, severity, package_name, details_json),
+                )
+        except Exception as e:
+            log.error("Failed to record repo scan finding for %s: %s", vulnerability_id, e)
+
+    def get_recent_repo_scans(self, limit: int = 50) -> List[Dict[str, Any]]:
+        scans: List[Dict[str, Any]] = []
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM repo_scans ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                )
+                cols = [desc[0] for desc in cursor.description]
+                scans = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            log.error("Failed to fetch recent repo scans: %s", e)
+        return scans
+
+    def get_repo_scan_details(self, repo_scan_id: int) -> Optional[Dict[str, Any]]:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM repo_scans WHERE id = ?", (repo_scan_id,))
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                cols = [desc[0] for desc in cursor.description]
+                scan = dict(zip(cols, row))
+                scan["findings"] = self.get_repo_scan_findings(repo_scan_id)
+                return scan
+        except Exception as e:
+            log.error("Failed to fetch repo scan details for %s: %s", repo_scan_id, e)
+            return None
+
+    def get_repo_scan_findings(self, repo_scan_id: int) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM repo_scan_findings WHERE repo_scan_id = ? ORDER BY id DESC",
+                    (repo_scan_id,),
+                )
+                cols = [desc[0] for desc in cursor.description]
+                findings = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            log.error("Failed to fetch repo scan findings for %s: %s", repo_scan_id, e)
+        return findings

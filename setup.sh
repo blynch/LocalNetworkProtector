@@ -22,6 +22,10 @@ echo "Installing Tsunami Scanner (Docker required)..."
 chmod +x scripts/install_tsunami.sh
 ./scripts/install_tsunami.sh || echo "Warning: Tsunami installation failed. Docker may be missing."
 
+echo "Installing OSV-SCALIBR (Go required)..."
+chmod +x scripts/install_scalibr.sh
+./scripts/install_scalibr.sh || echo "Warning: SCALIBR installation failed. GitHub repo scanning may be unavailable."
+
 echo "Creating certificates directory..."
 mkdir -p certs
 

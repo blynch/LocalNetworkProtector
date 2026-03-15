@@ -13,6 +13,7 @@ import time
 import sys
 from .tsunami import TsunamiScanner
 from .config import Config
+from .repo_scanner import RepoScanner
 
 try:
     import schedule
@@ -43,6 +44,7 @@ class MonitorService:
         telemetry: Optional[TelemetryManager] = None,
         eero_manager: Optional[EeroManager] = None,
         tsunami_scanner: Optional[TsunamiScanner] = None,
+        repo_scanner: Optional[RepoScanner] = None,
     ) -> None:
         self.config = config
         self.detection_engine = detection_engine
@@ -53,6 +55,7 @@ class MonitorService:
         self.database = database
         self.telemetry = telemetry
         self.eero_manager = eero_manager
+        self.repo_scanner = repo_scanner
         self._running = False
         self._scan_history: dict[str, float] = {}  # IP -> timestamp of last scan
         self._local_ip = None
@@ -81,14 +84,18 @@ class MonitorService:
             log.info("Started Eero polling thread.")
 
         # Start Scheduled Scan thread
-        if self.config.scheduled_scan.enabled:
+        if self.config.scheduled_scan.enabled or self.config.repo_scanning.enabled:
             if schedule is None:
-                log.warning("Schedule library not found. Scheduled scanning disabled.")
+                log.warning("Schedule library not found. Scheduled jobs disabled.")
             else:
-                schedule.every().day.at(self.config.scheduled_scan.schedule_time).do(self._run_scheduled_scan)
+                if self.config.scheduled_scan.enabled:
+                    schedule.every().day.at(self.config.scheduled_scan.schedule_time).do(self._run_scheduled_scan)
+                    log.info("Scheduled scanning enabled. Next run at %s", self.config.scheduled_scan.schedule_time)
+                if self.config.repo_scanning.enabled:
+                    schedule.every().day.at(self.config.repo_scanning.schedule_time).do(self._run_repo_scan)
+                    log.info("Repository scanning enabled. Next run at %s", self.config.repo_scanning.schedule_time)
                 self._scheduler_thread = threading.Thread(target=self._scheduler_loop, daemon=True)
                 self._scheduler_thread.start()
-                log.info("Scheduled scanning enabled. Next run at %s", self.config.scheduled_scan.schedule_time)
 
         capture_cfg = self.config.capture
         
@@ -429,3 +436,43 @@ class MonitorService:
                 time.sleep(5) 
         
         log.info("Scheduled scan completed. Discovered and scanned %d hosts.", total_hosts)
+
+    def _run_repo_scan(self):
+        """Synchronize GitHub repos and scan them with SCALIBR."""
+        if not self.repo_scanner or not self.config.repo_scanning.enabled:
+            return
+
+        log.info("Starting scheduled repository scan job...")
+        results = self.repo_scanner.run_all()
+        for result in results:
+            repo_scan_id = -1
+            if self.database:
+                repo_scan_id = self.database.record_repo_scan(
+                    repo_name=result.repo_name,
+                    repo_url=result.repo_url,
+                    local_path=result.local_path,
+                    status=result.status,
+                    vulnerability_count=result.vulnerability_count,
+                    result_path=result.result_path,
+                )
+                for finding in result.findings:
+                    self.database.record_repo_scan_finding(
+                        repo_scan_id=repo_scan_id,
+                        vulnerability_id=finding.vulnerability_id,
+                        severity=finding.severity,
+                        package_name=finding.package_name,
+                        details=finding.details or {},
+                    )
+
+            if result.status == "COMPLETED" and result.vulnerability_count > 0:
+                desc = f"Repo scan found {result.vulnerability_count} potential vulnerabilities in {result.repo_name}"
+                alert = Alert(
+                    rule_name="repo_vulnerability_scanner",
+                    description=desc,
+                    severity="high",
+                    packet_summary=f"Repository: {result.repo_name}",
+                    source_ip=None,
+                )
+                log.warning(desc)
+                self.alert_callback(alert)
+        log.info("Repository scanning job finished. Scanned %d repos.", len(results))

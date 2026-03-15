@@ -128,6 +128,8 @@ def create_app(config, db_manager, monitor_service):
             device_count=stats["device_count"],
             scan_count=stats["scan_count"],
             tsunami_count=stats["tsunami_count"],
+            repo_scan_count=stats["repo_scan_count"],
+            repo_vulnerability_count=stats["repo_vulnerability_count"],
             recent_alerts=recent_alerts,
         )
 
@@ -171,6 +173,23 @@ def create_app(config, db_manager, monitor_service):
             findings_per_page=findings_per_page,
         )
 
+    @app.route("/repo-scans")
+    @login_required
+    def repo_scans():
+        return render_template(
+            "repo_scans.html",
+            scans=db_manager.get_recent_repo_scans(limit=100),
+        )
+
+    @app.route("/repo-scans/<int:repo_scan_id>")
+    @login_required
+    def repo_scan_details(repo_scan_id: int):
+        scan = db_manager.get_repo_scan_details(repo_scan_id)
+        if scan is None:
+            flash(f"Repository scan #{repo_scan_id} was not found.", "warning")
+            return redirect(url_for("repo_scans"))
+        return render_template("repo_scan_detail.html", scan=scan)
+
     @app.route("/api/scans")
     @api_auth_required
     def scans_api():
@@ -193,6 +212,19 @@ def create_app(config, db_manager, monitor_service):
         )
         if scan is None:
             return jsonify({"error": "not_found", "scan_id": scan_id}), 404
+        return jsonify(scan)
+
+    @app.route("/api/repo-scans")
+    @api_auth_required
+    def repo_scans_api():
+        return jsonify(db_manager.get_recent_repo_scans(limit=100))
+
+    @app.route("/api/repo-scans/<int:repo_scan_id>")
+    @api_auth_required
+    def repo_scan_detail_api(repo_scan_id: int):
+        scan = db_manager.get_repo_scan_details(repo_scan_id)
+        if scan is None:
+            return jsonify({"error": "not_found", "repo_scan_id": repo_scan_id}), 404
         return jsonify(scan)
 
     @app.route("/tsunami")
